@@ -1,0 +1,9 @@
+python-dotenv
+vosk
+pyaudio
+nltk
+google-cloud-aiplatform
+markdown
+requests
+msal
+msal-extensions # onenote-cache
