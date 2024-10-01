@@ -3,49 +3,44 @@ import os
 
 import msal
 import requests
-from dotenv import load_dotenv
 from msal_extensions import build_encrypted_persistence, PersistedTokenCache
 
 # Create a logger for this module
 logger = logging.getLogger(__name__)
 
-load_dotenv()
 
-ONENOTE_SECTION_NAME = os.getenv('ONENOTE_SECTION_NAME')
-AZURE_CLIENT_ID = os.getenv('AZURE_CLIENT_ID')
-AZURE_TENANT_ID = os.getenv('AZURE_TENANT_ID')
-AUTHORITY = f'https://login.microsoftonline.com/{AZURE_TENANT_ID}'
-SCOPES = ['Notes.Read', 'User.Read']
+class OneNoteClient:
+    def __init__(self, onenote_section_name, az_client_id, az_tenant_id) -> None:
+        logger.info('Initializing OneNote Client...')
 
-os.environ['BROWSER'] = 'open -a /Applications/Google\\ Chrome.app %s'
+        # Set Chrome browser for interactive authentication
+        os.environ['BROWSER'] = 'open -a /Applications/Google\\ Chrome.app %s'
 
-
-class OneNote:
-    def __init__(self) -> None:
         self.headers = {
-            'Authorization': f'Bearer {self._get_access_token()}',
+            'Authorization': f'Bearer {self._get_access_token(az_client_id, az_tenant_id)}',
             'Accept': 'application/json',
             'Content-Type': 'application/xhtml+xml'
         }
 
-        self.section_id = self.get_section_id_by_name(ONENOTE_SECTION_NAME)
+        self.section_id = self.get_section_id_by_name(onenote_section_name)
 
     @staticmethod
-    def _get_access_token() -> str:
+    def _get_access_token(az_client_id, az_tenant_id) -> str:
         app = msal.PublicClientApplication(
-            AZURE_CLIENT_ID,
-            authority=AUTHORITY,
+            az_client_id,
+            authority=f'https://login.microsoftonline.com/{az_tenant_id}',
             token_cache=PersistedTokenCache(build_encrypted_persistence('.msal_token_cache.json')),
         )
 
+        scopes = ['Notes.Read', 'User.Read']
         result = None
         accounts = app.get_accounts()
 
         if accounts:
-            result = app.acquire_token_silent(SCOPES, account=accounts[0])
+            result = app.acquire_token_silent(scopes, account=accounts[0])
 
         if not result:
-            result = app.acquire_token_interactive(scopes=SCOPES)
+            result = app.acquire_token_interactive(scopes=scopes)
 
         return result['access_token']
 

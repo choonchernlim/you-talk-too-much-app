@@ -1,63 +1,69 @@
 import json
 import logging
 import os
+import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-import vosk
-from dotenv import load_dotenv
+import numpy as np
+import whisper
 
-from conversation import VoskConversationParser
+from utils import append_file
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+# Suppress FutureWarnings thrown by Whisper
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 class Transcriber(ABC):
-    @abstractmethod
-    def get_conversation_file_path(self) -> str:
-        pass
-
-    @abstractmethod
-    def get_raw_file_path(self) -> str:
-        pass
-
-    @abstractmethod
-    def stream_handler(self, frame):
-        pass
-
-    @abstractmethod
-    def no_stream_handler(self):
-        pass
-
-
-# https://medium.com/@nimritakoul01/offline-speech-to-text-in-python-f5d6454ecd02
-class VoskTranscriber(Transcriber):
     def __init__(self):
-        self.model = vosk.Model(model_path=os.getenv('VOSK_MODEL_PATH'))
+        super().__init__()
 
-        self.rec = vosk.KaldiRecognizer(self.model, 16000)
-        self.rec.SetWords(True)
+        self.formatted_datetime = datetime.now().strftime('%Y-%m-%d %p %I:%M')
 
-        self.datetime_suffix = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        # create folder out/[formatted_datetime] if not exists
+        os.makedirs(f'out/{self.formatted_datetime}', exist_ok=True)
 
-        self.conversation_parser = VoskConversationParser(
-            conversation_file_path=self.get_conversation_file_path(),
-            raw_file_path=self.get_raw_file_path(),
-        )
+    def get_formatted_datetime(self) -> str:
+        return self.formatted_datetime
 
     def get_conversation_file_path(self) -> str:
-        return f'out/{self.datetime_suffix}-conversation.txt'
+        return f'out/{self.formatted_datetime}/conversation.txt'
 
     def get_raw_file_path(self) -> str:
-        return f'out/{self.datetime_suffix}-raw.txt'
+        return f'out/{self.formatted_datetime}/raw.jsonl'
 
-    def stream_handler(self, frame):
-        if self.rec.AcceptWaveform(frame):
-            # Parse the JSON result and get the recognized text
-            words = json.loads(self.rec.Result()).get('result', [])
-            self.conversation_parser.conversation_parser(words)
+    @abstractmethod
+    def run(self, audio_data) -> str:
+        pass
 
-    def no_stream_handler(self):
-        self.conversation_parser.conversation_parser()
+
+class WhisperTranscriber(Transcriber):
+    def __init__(self):
+        super().__init__()
+
+        logger.info('Initializing Whisper Transcriber...')
+
+        # Load Whisper model
+        self.model = whisper.load_model('large-v3')  # base
+
+    def run(self, audio_data) -> str:
+        # Process audio with Whisper model
+        normalized_audio_data = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+        result = self.model.transcribe(normalized_audio_data, language='en', fp16=False)
+
+        append_file(self.get_raw_file_path(), json.dumps(result) + '\n')
+
+        text = result['text']
+        segments = result['segments']
+
+        # detect hallucinated text and return empty string instead
+        if (not segments or
+                all(s['no_speech_prob'] > 0.7 or s['compression_ratio'] == 0.5555555555555556
+                    for s in segments)):
+            return ''
+
+        append_file(self.get_conversation_file_path(), text.strip() + '\n')
+
+        return text

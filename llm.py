@@ -1,8 +1,6 @@
 import logging
-import os
 
 import vertexai
-from dotenv import load_dotenv
 from google.oauth2 import service_account
 from markdown import markdown
 from vertexai.generative_models import GenerativeModel, Part
@@ -11,58 +9,57 @@ from utils import read_file, write_file
 
 logger = logging.getLogger(__name__)
 
-load_dotenv()
 
-GCP_VERTEX_PROJECT = os.getenv('GCP_VERTEX_PROJECT')
-GCP_VERTEX_LOCATION = os.getenv('GCP_VERTEX_LOCATION')
-GCP_VERTEX_SA_KEY = os.getenv('GCP_VERTEX_SA_KEY')
-GCP_VERTEX_MODEL = os.getenv('GCP_VERTEX_MODEL')
+class LLM:
+    def __init__(self, project, location, sa_key, model) -> None:
+        logger.info('Initializing LLM...')
 
-
-class Summarizer:
-    def __init__(self) -> None:
         vertexai.init(
-            project=GCP_VERTEX_PROJECT,
-            location=GCP_VERTEX_LOCATION,
-            credentials=service_account.Credentials.from_service_account_file(GCP_VERTEX_SA_KEY),
+            project=project,
+            location=location,
+            credentials=service_account.Credentials.from_service_account_file(sa_key),
         )
 
-        self.model = GenerativeModel(GCP_VERTEX_MODEL)
+        self.model = GenerativeModel(model)
 
     def summarize(self, conversation_file_path) -> str:
-        logger.info(f'Summarizing conversation in {conversation_file_path}...')
+        logger.info(f'Summarizing conversation [File: {conversation_file_path}] ...')
 
         prompt = '''
         You are a helpful agent in summarizing lengthy conversations. 
-        The summarization must be grounded to the provided document.
-        Use the markdown format below when responding.
-        Follow the order of the sections and provide the details as requested.\
-        If you are unsure about the content, please do not make up any information.
+
+        [INSTRUCTIONS]:        
+        1. The summarization must be grounded to the provided document.
+        2. Use the exact markdown format below when responding.
+        3. Follow the order of the sections and provide the details as requested.
+        4. If you are unsure about the content, please do not make up any information.
         
-        For each section, provide the following details:
+        [SECTION STRUCTURE]:        
         1. "Executive Summary" section: 3 to 5 bullet points summarizing the key details and decisions.
         2. "Detailed Summary" section: Details and key decisions in bullet points, grouped by topics.
         3. "Action Items" section: 3 to 5 bullet points under "Executive Summary" section.
 
         [MARKDOWN FORMAT]:        
-        
         # Executive Summary
         
-        * [SUMMARY]
-        * [SUMMARY]
+        * [TEXT]
+        * [TEXT]
 
         # Detailed Summary
 
         ## [TOPIC]
     
-        * **[SUBTOPIC]**
-          * [DETAIL]
-          * [DETAIL]
+        * **[SHORT SUMMARY]:** [TEXT]
+        * **[SHORT SUMMARY]:** [TEXT]
 
         # Action Items
         
-        * [ACTION ITEM]
-        * [ACTION ITEM]
+        * [TEXT]
+        * [TEXT]
+
+        [MARKDOWN RULES]:
+        1. [SUBTOPIC] must be in bold.
+        2. [TEXT] must NOT in bold.        
         '''
 
         doc = Part.from_text(read_file(conversation_file_path))
@@ -78,7 +75,10 @@ class Summarizer:
 
         html_content = markdown(response.text)
 
-        write_file(f'{conversation_file_path}.md', response.text)
-        write_file(f'{conversation_file_path}.html', html_content)
+        # remove file extension from conversation_file_path, ex: filename.txt -> filename
+        filename = conversation_file_path.rsplit('.', 1)[0]
+
+        write_file(f'{filename}.md', response.text)
+        write_file(f'{filename}.html', html_content)
 
         return html_content
