@@ -13,22 +13,26 @@ class OneNoteClient:
     def __init__(self, onenote_section_name, az_client_id, az_tenant_id) -> None:
         logger.info('Initializing OneNote Client...')
 
+        self.az_client_id = az_client_id
+        self.az_tenant_id = az_tenant_id
+
         # Set Chrome browser for interactive authentication
         os.environ['BROWSER'] = 'open -a /Applications/Google\\ Chrome.app %s'
 
-        self.headers = {
-            'Authorization': f'Bearer {self._get_access_token(az_client_id, az_tenant_id)}',
+        self.section_id = self.get_section_id_by_name(onenote_section_name)
+
+    def get_headers(self) -> dict:
+        # always get a fresh access token to prevent it from expiration if it was fetched too soon
+        return {
+            'Authorization': f'Bearer {self._get_access_token()}',
             'Accept': 'application/json',
             'Content-Type': 'application/xhtml+xml'
         }
 
-        self.section_id = self.get_section_id_by_name(onenote_section_name)
-
-    @staticmethod
-    def _get_access_token(az_client_id, az_tenant_id) -> str:
+    def _get_access_token(self) -> str:
         app = msal.PublicClientApplication(
-            az_client_id,
-            authority=f'https://login.microsoftonline.com/{az_tenant_id}',
+            self.az_client_id,
+            authority=f'https://login.microsoftonline.com/{self.az_tenant_id}',
             token_cache=PersistedTokenCache(build_encrypted_persistence('.msal_token_cache.json')),
         )
 
@@ -47,7 +51,7 @@ class OneNoteClient:
     def get_pages(self, page_id='') -> dict:
         url = f'https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}'
 
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.get_headers())
         response.raise_for_status()
 
         return response.json()
@@ -74,13 +78,13 @@ class OneNoteClient:
         </html>
         """
 
-        response = requests.post(url, headers=self.headers, data=body)
+        response = requests.post(url, headers=self.get_headers(), data=body)
         response.raise_for_status()
 
     def get_section_id_by_name(self, name: str) -> str:
         url = 'https://graph.microsoft.com/v1.0/me/onenote/sections'
 
-        response = requests.get(url, headers=self.headers)
+        response = requests.get(url, headers=self.get_headers())
         response.raise_for_status()
 
         sections = response.json()['value']

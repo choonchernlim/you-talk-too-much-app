@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 # DONE try-catch both daemon threads and code base so that CTRL+C terminates the program gracefully?
 # TODO logging with line number and file name padded
 # DONE parse out txt and replace with md or html in summarizer
-# TODO remove unused files
+# DONE remove unused files
 # TODO set up src/ and tests/ directories
+# TODO color logging?
 # DONE test requirements.txt with new virtual environment
 
 GCP_VERTEX_PROJECT = os.getenv('GCP_VERTEX_PROJECT')
@@ -35,6 +36,7 @@ transcriber = WhisperTranscriber()
 audio_capturer = AudioCapturer(transcriber)
 llm = LLM(GCP_VERTEX_PROJECT, GCP_VERTEX_LOCATION, GCP_VERTEX_SA_KEY, GCP_VERTEX_MODEL)
 onenote_client = OneNoteClient(ONENOTE_SECTION_NAME, AZURE_CLIENT_ID, AZURE_TENANT_ID)
+
 
 stop_event = Event()
 audio_capture_thread = Thread(target=audio_capturer.capture_audio, args=(stop_event,), daemon=True)

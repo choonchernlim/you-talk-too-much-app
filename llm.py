@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class LLM:
     def __init__(self, project, location, sa_key, model) -> None:
-        logger.info('Initializing LLM...')
+        logger.info('Initializing Vertex LLM...')
 
         vertexai.init(
             project=project,
