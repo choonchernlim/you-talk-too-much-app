@@ -1,12 +1,12 @@
-import logging
 import time
 from threading import Event
 
 import pyaudio
 
+from log_config import setup_logger
 from transcriber import Transcriber
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class AudioCapturer:
@@ -22,7 +22,7 @@ class AudioCapturer:
         self.buffer = []
 
     def capture_audio(self, stop_event: Event):
-        logging.info('Starting audio capture...')
+        logger.info('Starting audio capture...')
 
         audio = pyaudio.PyAudio()
         stream = audio.open(
@@ -55,6 +55,9 @@ class AudioCapturer:
 
         # Process the remaining audio in the buffer
         self.process_buffer()
+
+        # Print a newline
+        print()
 
     def process_buffer(self):
         if self.buffer:

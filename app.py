@@ -7,21 +7,20 @@ from dotenv import load_dotenv
 
 from audio_capturer import AudioCapturer
 from llm import LLM
-from log_config import setup_logging
+from log_config import setup_logger
 from onenote_client import OneNoteClient
 from transcriber import WhisperTranscriber
 
 load_dotenv()
-setup_logging()
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # DONE try-catch both daemon threads and code base so that CTRL+C terminates the program gracefully?
-# TODO logging with line number and file name padded
+# CAN'T BE DONE logging with line number and file name padded
 # DONE parse out txt and replace with md or html in summarizer
 # DONE remove unused files
 # TODO set up src/ and tests/ directories
-# TODO color logging?
+# DONE color logging?
 # DONE test requirements.txt with new virtual environment
 
 GCP_VERTEX_PROJECT = os.getenv('GCP_VERTEX_PROJECT')

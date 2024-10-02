@@ -1,13 +1,12 @@
-import logging
-
 import vertexai
 from google.oauth2 import service_account
 from markdown import markdown
 from vertexai.generative_models import GenerativeModel, Part
 
+from log_config import setup_logger
 from utils import read_file, write_file
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 class LLM:

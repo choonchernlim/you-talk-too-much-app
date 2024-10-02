@@ -1,12 +1,12 @@
-import logging
 import os
 
 import msal
 import requests
 from msal_extensions import build_encrypted_persistence, PersistedTokenCache
 
-# Create a logger for this module
-logger = logging.getLogger(__name__)
+from log_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class OneNoteClient:

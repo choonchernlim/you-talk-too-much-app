@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import warnings
 from abc import ABC, abstractmethod
@@ -8,9 +7,10 @@ from datetime import datetime
 import numpy as np
 import whisper
 
+from log_config import setup_logger
 from utils import append_file
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 # Suppress FutureWarnings thrown by Whisper
 warnings.simplefilter(action='ignore', category=FutureWarning)
