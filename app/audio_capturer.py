@@ -3,8 +3,8 @@ from threading import Event
 
 import pyaudio
 
-from log_config import setup_logger
-from transcriber import Transcriber
+from app.log_config import setup_logger
+from app.transcriber import Transcriber
 
 logger = setup_logger(__name__)
 

@@ -163,4 +163,4 @@ cython_debug/
 
 # App specific files
 .msal_token_cache.json
-out/
+transcripts/

@@ -4,7 +4,7 @@ import msal
 import requests
 from msal_extensions import build_encrypted_persistence, PersistedTokenCache
 
-from log_config import setup_logger
+from app.log_config import setup_logger
 
 logger = setup_logger(__name__)
 

@@ -1,15 +1,14 @@
-import logging
 import os
 import time
 from threading import Thread, Event
 
 from dotenv import load_dotenv
 
-from audio_capturer import AudioCapturer
-from llm import LLM
-from log_config import setup_logger
-from onenote_client import OneNoteClient
-from transcriber import WhisperTranscriber
+from app.audio_capturer import AudioCapturer
+from app.llm import LLM
+from app.log_config import setup_logger
+from app.onenote_client import OneNoteClient
+from app.transcriber import WhisperTranscriber
 
 load_dotenv()
 
@@ -19,7 +18,7 @@ logger = setup_logger(__name__)
 # CAN'T BE DONE logging with line number and file name padded
 # DONE parse out txt and replace with md or html in summarizer
 # DONE remove unused files
-# TODO set up src/ and tests/ directories
+# DONE set up src/ and tests/ directories
 # DONE color logging?
 # DONE test requirements.txt with new virtual environment
 
@@ -44,27 +43,28 @@ audio_process_thread = Thread(target=audio_capturer.batch_process_buffer, args=(
 audio_capture_thread.start()
 audio_process_thread.start()
 
+# Block the main thread until CTRL+C is pressed
 try:
-    # Block the main thread until CTRL+C is pressed
     while True:
         time.sleep(60)
-
 except KeyboardInterrupt:
     # Print a newline
     print()
 
-    logger.info('KeyboardInterrupt detected. Sending stop event...')
+    logger.info('KeyboardInterrupt detected. Broadcasting stop event to all threads...')
     stop_event.set()
 
-finally:
-    logger.info('Waiting for audio capture thread to end...')
-    audio_capture_thread.join()
+logger.info('Waiting for audio capture thread to end...')
+audio_capture_thread.join()
 
-    logger.info('Waiting for audio process thread to end...')
-    audio_process_thread.join()
+logger.info('Waiting for audio process thread to end...')
+audio_process_thread.join()
 
-    title = transcriber.get_formatted_datetime()
-    html_summary = llm.summarize(transcriber.get_conversation_file_path())
-    onenote_client.create_page(title, html_summary)
+# Only create OneNote page if conversation file exists
+if os.path.exists(transcriber.get_conversation_file_path()):
+    onenote_client.create_page(
+        title=transcriber.get_formatted_datetime(),
+        html_summary=llm.summarize(transcriber.get_conversation_file_path()),
+    )
 
-    logger.info('Done!')
+logger.info('Done!')

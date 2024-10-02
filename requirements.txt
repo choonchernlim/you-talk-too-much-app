@@ -1,3 +1,4 @@
+pytest
 python-dotenv
 pyaudio
 google-cloud-aiplatform

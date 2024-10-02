@@ -1,13 +1,6 @@
 import logging
 
 
-# def setup_logging():
-#     logging.basicConfig(
-#         level=logging.INFO,
-#         format='%(asctime)s %(levelname)-8s %(name)-15s %(message)s',
-#     )
-
-
 # Define ANSI color codes
 class ColoredFormatter(logging.Formatter):
     # Mapping log levels to colors
@@ -36,7 +29,7 @@ def setup_logger(name):
     ch = logging.StreamHandler()
 
     # Create a colored formatter
-    formatter = ColoredFormatter('%(asctime)s %(levelname)-8s %(name)-15s %(message)s')
+    formatter = ColoredFormatter('%(asctime)s %(levelname)-8s %(name)-20s %(message)s')
 
     # Set the formatter to the handler
     ch.setFormatter(formatter)

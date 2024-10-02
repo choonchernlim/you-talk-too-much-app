@@ -7,8 +7,8 @@ from datetime import datetime
 import numpy as np
 import whisper
 
-from log_config import setup_logger
-from utils import append_file
+from app.log_config import setup_logger
+from app.utils import append_file
 
 logger = setup_logger(__name__)
 
@@ -21,18 +21,19 @@ class Transcriber(ABC):
         super().__init__()
 
         self.formatted_datetime = datetime.now().strftime('%Y-%m-%d %p %I:%M')
+        self.out_dir = f'transcripts/{self.formatted_datetime}'
 
         # create folder out/[formatted_datetime] if not exists
-        os.makedirs(f'out/{self.formatted_datetime}', exist_ok=True)
+        os.makedirs(self.out_dir, exist_ok=True)
 
     def get_formatted_datetime(self) -> str:
         return self.formatted_datetime
 
     def get_conversation_file_path(self) -> str:
-        return f'out/{self.formatted_datetime}/conversation.txt'
+        return f'{self.out_dir}/conversation.txt'
 
     def get_raw_file_path(self) -> str:
-        return f'out/{self.formatted_datetime}/raw.jsonl'
+        return f'{self.out_dir}/raw.jsonl'
 
     @abstractmethod
     def run(self, audio_data) -> str:
