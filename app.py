@@ -37,7 +37,6 @@ audio_capturer = AudioCapturer(transcriber)
 llm = LLM(GCP_VERTEX_PROJECT, GCP_VERTEX_LOCATION, GCP_VERTEX_SA_KEY, GCP_VERTEX_MODEL)
 onenote_client = OneNoteClient(ONENOTE_SECTION_NAME, AZURE_CLIENT_ID, AZURE_TENANT_ID)
 
-
 stop_event = Event()
 audio_capture_thread = Thread(target=audio_capturer.capture_audio, args=(stop_event,), daemon=True)
 audio_process_thread = Thread(target=audio_capturer.batch_process_buffer, args=(stop_event,), daemon=True)

@@ -26,20 +26,22 @@ class LLM:
         logger.info(f'Summarizing conversation [File: {conversation_file_path}] ...')
 
         prompt = '''
-        You are a helpful agent in summarizing lengthy conversations. 
+        You are a helpful agent, capable in summarizing lengthy conversations clearly and succinctly. 
 
-        [INSTRUCTIONS]:        
+        <INSTRUCTIONS>        
         1. The summarization must be grounded to the provided document.
         2. Use the exact markdown format below when responding.
         3. Follow the order of the sections and provide the details as requested.
         4. If you are unsure about the content, please do not make up any information.
+        </INSTRUCTIONS>        
         
-        [SECTION STRUCTURE]:        
+        <SECTION STRUCTURE>        
         1. "Executive Summary" section: 3 to 5 bullet points summarizing the key details and decisions.
         2. "Detailed Summary" section: Details and key decisions in bullet points, grouped by topics.
         3. "Action Items" section: 3 to 5 bullet points under "Executive Summary" section.
+        </SECTION STRUCTURE>        
 
-        [MARKDOWN FORMAT]:        
+        <MARKDOWN FORMAT>        
         # Executive Summary
         
         * [TEXT]
@@ -56,10 +58,12 @@ class LLM:
         
         * [TEXT]
         * [TEXT]
+        </MARKDOWN FORMAT>        
 
-        [MARKDOWN RULES]:
+        <MARKDOWN RULES>
         1. [SUBTOPIC] must be in bold.
         2. [TEXT] must NOT in bold.        
+        </MARKDOWN RULES>
         '''
 
         doc = Part.from_text(read_file(conversation_file_path))
