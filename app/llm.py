@@ -37,7 +37,7 @@ class LLM:
         <SECTION STRUCTURE>        
         1. "Executive Summary" section: 3 to 5 bullet points summarizing the key details and decisions.
         2. "Detailed Summary" section: Details and key decisions in bullet points, grouped by topics.
-        3. "Action Items" section: 3 to 5 bullet points under "Executive Summary" section.
+        3. "Action Items" section: 3 to 5 bullet points on actions to be taken. Provide timeline if available.
         </SECTION STRUCTURE>        
 
         <MARKDOWN FORMAT>        
