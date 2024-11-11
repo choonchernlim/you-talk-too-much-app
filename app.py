@@ -16,14 +16,6 @@ load_dotenv()
 
 logger = setup_logger(__name__)
 
-# DONE try-catch both daemon threads and code base so that CTRL+C terminates the program gracefully?
-# CAN'T BE DONE logging with line number and file name padded
-# DONE parse out txt and replace with md or html in summarizer
-# DONE remove unused files
-# DONE set up src/ and tests/ directories
-# DONE color logging?
-# DONE test requirements.txt with new virtual environment
-
 GCP_VERTEX_PROJECT = os.getenv('GCP_VERTEX_PROJECT')
 GCP_VERTEX_LOCATION = os.getenv('GCP_VERTEX_LOCATION')
 GCP_VERTEX_SA_KEY = os.getenv('GCP_VERTEX_SA_KEY')
@@ -37,19 +29,20 @@ audio_capturer = AudioCapturer(transcriber)
 llm = LLM(GCP_VERTEX_PROJECT, GCP_VERTEX_LOCATION, GCP_VERTEX_SA_KEY, GCP_VERTEX_MODEL)
 onenote_client = OneNoteClient(ONENOTE_SECTION_NAME, AZURE_CLIENT_ID, AZURE_TENANT_ID)
 
-stop_event = Event()
+stop_event: Optional[Event] = None
 audio_capture_thread: Optional[Thread] = None
 audio_process_thread: Optional[Thread] = None
 
 
 def start_capture():
-    global audio_capture_thread, audio_process_thread
+    global stop_event, audio_capture_thread, audio_process_thread
 
     if audio_capture_thread is not None or audio_process_thread is not None:
         return
 
     logger.info('Starting new capture...')
 
+    stop_event = Event()
     audio_capture_thread = Thread(target=audio_capturer.capture_audio, args=(stop_event,), daemon=True)
     audio_process_thread = Thread(target=audio_capturer.batch_process_buffer, args=(stop_event,), daemon=True)
 
@@ -62,7 +55,7 @@ def start_capture():
 
 
 def stop_capture():
-    global audio_capture_thread, audio_process_thread
+    global stop_event, audio_capture_thread, audio_process_thread
 
     if audio_capture_thread is None or audio_process_thread is None:
         return
@@ -86,6 +79,7 @@ def stop_capture():
             html_summary=llm.summarize(transcriber.get_conversation_file_path()),
         )
 
+    stop_event = None
     audio_capture_thread = None
     audio_process_thread = None
     logger.info('Stopped.')
