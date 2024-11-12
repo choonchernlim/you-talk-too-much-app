@@ -1,14 +1,28 @@
-# you-talk-too-much-app
+# You Talk To Much App
 
 ```mermaid
 flowchart TD
-    A[User] -- uses --> B[App]
-    B --> C[Record Speech]
-    C --> D[Export Speech to File]
-    C --> E[Export Raw Data to File]
-    D --> F[Summarize Speech]
-    C --> H[Generate Smart Questions Based on Recent Speech]
-    F --> G[Write to OneNote]
+    A[User] -- uses --> APP[App]
+    APP -- displays --> MENU[ASCII Menu]
+
+    MENU -- Press '1' --> DEC1{Audio Capture\nNot Running?}
+    DEC1 -- Y --> 1A[Start Speech Recording]
+    DEC1 -- N --> 1B[Do Nothing]
+
+    MENU -- Press '2' --> DEC2{Audio Capture\n Running?}
+
+    DEC2 -- Y --> 2A[Stop Speech Recording]
+    2A --> 2B[Export Speech to File]
+    2B --> 2C[Export Raw Data to File]
+    2C --> 2D[Summarize Speech]
+    2D --> 2E[Write to OneNote]
+    2E --> DEC3{2 or 3 \nPressed?}
+    DEC3 -- 2 --> MENU
+    DEC3 -- 3 --> 3A[Quit]
+
+    DEC2 -- N --> DEC3
+
+    MENU -- Press '3' --> DEC2
 ```
 
 # Getting Started
