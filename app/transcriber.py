@@ -20,6 +20,12 @@ class Transcriber(ABC):
     def __init__(self):
         super().__init__()
 
+        self.formatted_datetime = None
+        self.out_dir = None
+
+    def create_new_transcript_directory(self):
+        logger.info('Creating new transcript directory...')
+
         self.formatted_datetime = datetime.now().strftime('%Y-%m-%d %p %I:%M')
         self.out_dir = f'transcripts/{self.formatted_datetime}'
 
@@ -30,9 +36,13 @@ class Transcriber(ABC):
         return self.formatted_datetime
 
     def get_conversation_file_path(self) -> str:
+        assert self.out_dir is not None
+
         return f'{self.out_dir}/conversation.txt'
 
     def get_raw_file_path(self) -> str:
+        assert self.out_dir is not None
+
         return f'{self.out_dir}/raw.jsonl'
 
     @abstractmethod

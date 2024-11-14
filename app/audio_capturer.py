@@ -24,6 +24,10 @@ class AudioCapturer:
     def capture_audio(self, stop_event: Event):
         logger.info('Starting audio capture...')
 
+        # create new transcript and clear the audio buffer
+        self.transcriber.create_new_transcript_directory()
+        self.buffer.clear()
+
         audio = pyaudio.PyAudio()
         stream = audio.open(
             format=pyaudio.paInt16,
