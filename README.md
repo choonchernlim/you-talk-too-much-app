@@ -12,7 +12,7 @@ This app will record the conversation, summarize it, and write it to OneNote.
 4. ???
 5. Profit.
 
-# How does it Work?
+# How does it Work
 
 ```mermaid
 flowchart TD
