@@ -1,0 +1,10 @@
+pytest
+python-dotenv
+pyaudio
+google-cloud-aiplatform
+markdown
+requests
+msal
+msal-extensions
+openai-whisper
+numpy
