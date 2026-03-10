@@ -46,7 +46,7 @@ class AudioCapturer:
         stream.close()
         audio.terminate()
 
-    def batch_process_buffer(self, stop_event: Event, batch_duration_in_sec=2):
+    def batch_process_buffer(self, stop_event: Event, batch_duration_in_sec=30):
         logger.info('Starting batch process buffer...')
 
         while not stop_event.is_set():
