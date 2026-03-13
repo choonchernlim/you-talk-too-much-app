@@ -3,8 +3,8 @@ from google.oauth2 import service_account
 from markdown import markdown
 from vertexai.generative_models import GenerativeModel, Part
 
-from app.log_config import setup_logger
-from app.utils import read_file, write_file
+from you_talk_too_much.log_config import setup_logger
+from you_talk_too_much.utils import read_file, write_file
 
 logger = setup_logger(__name__)
 

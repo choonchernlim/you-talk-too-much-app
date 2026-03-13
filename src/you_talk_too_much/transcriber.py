@@ -7,8 +7,8 @@ from datetime import datetime
 import numpy as np
 import whisper
 
-from app.log_config import setup_logger
-from app.utils import append_file
+from you_talk_too_much.log_config import setup_logger
+from you_talk_too_much.utils import append_file
 
 logger = setup_logger(__name__)
 

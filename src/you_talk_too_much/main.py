@@ -1,16 +1,17 @@
 import os
+import sys
 import time
 from threading import Thread, Event
 from typing import Optional
 
 from dotenv import load_dotenv
 
-from app.audio_capturer import AudioCapturer
-from app.llm import LLM
-from app.log_config import setup_logger
-from app.onenote_client import OneNoteClient
-from app.transcriber import WhisperTranscriber
-from app.utils import get_key
+from .audio_capturer import AudioCapturer
+from .llm import LLM
+from .log_config import setup_logger
+from .onenote_client import OneNoteClient
+from .transcriber import WhisperTranscriber
+from .utils import get_key
 
 load_dotenv()
 
