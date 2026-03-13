@@ -15,10 +15,10 @@ def display_menu() -> None:
 
 def run() -> None:
     """Main application loop."""
-    display_menu()
-
     session = AppSession()
     is_capture_started = False
+
+    display_menu()
 
     while True:
         key = get_key()

@@ -55,6 +55,7 @@ class OneNoteClient:
         """Fetch OneNote pages or a specific page."""
         url = f"https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}"
         response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response.raise_for_status()
         return response.json()
 
     def create_page(self, title: str, html_summary: str) -> None:
@@ -79,17 +80,14 @@ class OneNoteClient:
         response = requests.post(
             url, headers=self.get_headers(), data=html_content, timeout=10
         )
-
-        # 201 is the status code for 'Created'
-        if response.status_code == 201:  # noqa: PLR2004
-            logger.info("OneNote page created successfully.")
-        else:
-            logger.error(f"Failed to create OneNote page: {response.text}")
+        response.raise_for_status()
+        logger.info("OneNote page created successfully.")
 
     def _get_section_id(self) -> str:
         """Find the ID of the section with the specified name."""
         url = "https://graph.microsoft.com/v1.0/me/onenote/sections"
         response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response.raise_for_status()
         sections = response.json().get("value", [])
 
         for section in sections:

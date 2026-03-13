@@ -41,18 +41,14 @@ class AudioCapturer:
                 logger.error(status)
             self.buffer.append(indata.copy())
 
-        try:
-            with sd.InputStream(
-                samplerate=self.RATE,
-                channels=1,
-                callback=_audio_callback,
-                dtype="float32",
-            ):
-                while not stop_event.is_set():
-                    stop_event.wait(0.1)
-        except Exception as e:
-            logger.error(f"Error during recording: {e}")
-            stop_event.set()
+        with sd.InputStream(
+            samplerate=self.RATE,
+            channels=1,
+            callback=_audio_callback,
+            dtype="float32",
+        ):
+            while not stop_event.is_set():
+                stop_event.wait(0.1)
 
         logger.info("Stopping audio capture...")
 
@@ -62,12 +58,8 @@ class AudioCapturer:
         """Process the audio buffer dynamically based on VAD."""
         logger.info("Starting VAD-based batch process buffer...")
 
-        try:
-            model = load_silero_vad()
-            logger.info("Silero VAD model loaded successfully via package.")
-        except Exception as e:
-            logger.error(f"Failed to load VAD model: {e}")
-            return
+        model = load_silero_vad()
+        logger.info("Silero VAD model loaded successfully via package.")
 
         while not stop_event.is_set():
             time.sleep(check_interval)

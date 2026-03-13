@@ -19,7 +19,7 @@ class ColoredFormatter(logging.Formatter):
         """Apply color based on the level of the log message."""
         original_name = record.name
         parts = original_name.split(".")
-        
+
         # Abbreviate intermediate parts to their first letter
         # e.g. "you_talk_too_much.transcription.transcriber" -> "y.t.transcriber"
         if len(parts) > 1:

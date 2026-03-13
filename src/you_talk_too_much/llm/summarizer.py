@@ -72,16 +72,15 @@ class LLM:
         response = self.client.models.generate_content(
             model=self.model_id,
             contents=[prompt, doc_content],
-            config={
-                "max_output_tokens": 8192,
-                "temperature": 1,
-                "top_p": 0.95,
-            },
+            config=genai.types.GenerateContentConfig(
+                max_output_tokens=8192,
+                temperature=1.0,
+                top_p=0.95,
+            ),
         )
 
         if not response.text:
-            logger.error("Empty response from LLM.")
-            return "", ""
+            raise RuntimeError("Empty response from Vertex AI during summarization.")
 
         html_content = markdown(response.text)
 

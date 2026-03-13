@@ -56,7 +56,9 @@ class AppSession:
         self.stop_event.clear()
 
         self.capture_thread = Thread(
-            target=self.audio_capturer.capture_audio, args=(self.stop_event,), daemon=True
+            target=self.audio_capturer.capture_audio,
+            args=(self.stop_event,),
+            daemon=True,
         )
         self.process_thread = Thread(
             target=self.audio_capturer.batch_process_buffer,
@@ -78,19 +80,15 @@ class AppSession:
         if self.process_thread:
             self.process_thread.join()
 
-        # Post-processing
-        try:
-            conversation_text = self.file_manager.read_conversation()
-            if conversation_text.strip():
-                markdown_summary, html_summary = self.llm.summarize(conversation_text)
-                if markdown_summary and html_summary:
-                    self.file_manager.write_summary(markdown_summary, html_summary)
+        # Post-processing (fail-fast)
+        conversation_text = self.file_manager.read_conversation()
+        if conversation_text.strip():
+            markdown_summary, html_summary = self.llm.summarize(conversation_text)
+            self.file_manager.write_summary(markdown_summary, html_summary)
 
-                    self.onenote_client.create_page(
-                        title=self.file_manager.get_formatted_datetime(),
-                        html_summary=html_summary,
-                    )
-        except Exception as e:
-            logger.error(f"Error during post-processing: {e}")
+            self.onenote_client.create_page(
+                title=self.file_manager.get_formatted_datetime(),
+                html_summary=html_summary,
+            )
 
         logger.info("Stopped.")
