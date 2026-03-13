@@ -27,7 +27,7 @@ logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
 # Thresholds for hallucination detection
 NO_SPEECH_PROB_THRESHOLD = 0.7
-COMPRESSION_RATIO_THRESHOLD = 0.5555555555555556
+COMPRESSION_RATIO_THRESHOLD = 2.4
 
 
 class Transcriber(ABC):
@@ -79,12 +79,12 @@ class MLXTranscriber(Transcriber):
         """Initialize the MLX Transcriber with whisper and diarization models."""
         super().__init__()
 
-        logger.info("Initializing MLX Transcriber...")
-
         self.whisper_model = os.getenv("HF_WHISPER_MODEL")
         self.diarization_model = os.getenv("HF_DIARIZATION_MODEL")
         self.embedding_model_name = os.getenv("HF_EMBEDDING_MODEL")
         self.hf_token = os.getenv("HF_TOKEN")
+
+        logger.info(f"Initializing Transcriber ({self.whisper_model})...")
 
         # PyTorch 2.6 default weights_only=True breaks pyannote model loading
         _original_load = torch.load
@@ -96,6 +96,7 @@ class MLXTranscriber(Transcriber):
         try:
             torch.load = lambda *args, **kwargs: _original_load(*args, **{**kwargs, "weights_only": False})
 
+            logger.info(f"Initializing speaker diarization pipeline ({self.diarization_model})...")
             self.pipeline = Pipeline.from_pretrained(self.diarization_model)
 
             if self.pipeline:
@@ -115,6 +116,8 @@ class MLXTranscriber(Transcriber):
                 sys.stdout = open(os.devnull, "w")
 
             try:
+                logger.info(f"Initializing embedding model ({self.embedding_model_name})...")
+
                 self.embedding_model = Model.from_pretrained(
                     self.embedding_model_name, use_auth_token=self.hf_token
                 )
@@ -170,12 +173,18 @@ class MLXTranscriber(Transcriber):
 
         segments = result.get("segments", [])
 
-        # detect hallucinated text
-        if not segments or all(
-            s.get("no_speech_prob", 0) > NO_SPEECH_PROB_THRESHOLD
-            or s.get("compression_ratio", 0) == COMPRESSION_RATIO_THRESHOLD
-            for s in segments
-        ):
+        # Filter out hallucinated segments
+        valid_segments = []
+        for s in segments:
+            if s.get("no_speech_prob", 0) > NO_SPEECH_PROB_THRESHOLD:
+                continue
+            if s.get("compression_ratio", 0) > COMPRESSION_RATIO_THRESHOLD:
+                continue
+            valid_segments.append(s)
+
+        segments = valid_segments
+
+        if not segments:
             return ""
 
         # Diarization
@@ -197,7 +206,8 @@ class MLXTranscriber(Transcriber):
                 for turn, _, speaker_label in diarization_output.itertracks(yield_label=True):
                     if speaker_label != local_speaker:
                         continue
-                    if turn.end - turn.start < 0.5:
+                    # Ignore short segments to prevent noisy embeddings from ruining profiles
+                    if turn.end - turn.start < 1.2:
                         continue
                     try:
                         emb = inference.crop({"waveform": waveform, "sample_rate": 16000}, turn)
@@ -222,10 +232,13 @@ class MLXTranscriber(Transcriber):
                     min_idx = np.argmin(distances)
                     min_dist = distances[min_idx]
 
-                    if min_dist < 0.3: # Match threshold
+                    # Relaxed threshold to group the same speaker together despite network/mic drift
+                    if min_dist < 0.55:
                         matched_id = global_ids[min_idx]
                         local_to_global[local_speaker] = matched_id
-                        self.global_speakers[matched_id] = 0.9 * self.global_speakers[matched_id] + 0.1 * avg_embedding
+                        # Only shift the global profile if we are highly confident, to prevent corruption
+                        if min_dist < 0.25:
+                            self.global_speakers[matched_id] = 0.9 * self.global_speakers[matched_id] + 0.1 * avg_embedding
                     else:
                         global_id = f"SPEAKER_{self.speaker_counter:02d}"
                         self.speaker_counter += 1

@@ -78,13 +78,11 @@ def stop_capture() -> None:
     if _session is None:
         return
 
-    logger.info("Stopping existing capture... Broadcasting stop event...")
+    logger.info("Stopping existing capture...")
     _session.stop_event.set()
 
-    logger.info("Waiting for audio capture thread to end...")
     _session.capture_thread.join()
 
-    logger.info("Waiting for audio process thread to end...")
     _session.process_thread.join()
 
     # Only create OneNote page if conversation file exists

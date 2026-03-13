@@ -119,4 +119,4 @@ class AudioCapturer:
 
             # Print the conversation text to console
             if conversation_text:
-                logger.info(f"Conversation: {conversation_text}")
+                logger.info("Conversation:\n" + conversation_text.strip())
