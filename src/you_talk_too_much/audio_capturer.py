@@ -4,6 +4,8 @@ from typing import Any
 
 import numpy as np
 import sounddevice as sd
+import torch
+from silero_vad import get_speech_timestamps, load_silero_vad
 
 from you_talk_too_much.log_config import setup_logger
 from you_talk_too_much.transcriber import Transcriber
@@ -57,16 +59,46 @@ class AudioCapturer:
         logger.info("Stopping audio capture...")
 
     def batch_process_buffer(
-        self, stop_event: Event, batch_duration_in_sec: int = 30
+        self, stop_event: Event, check_interval: float = 2.0
     ) -> None:
-        """Process the audio buffer in batches until stop_event is set."""
-        logger.info("Starting batch process buffer...")
+        """Process the audio buffer dynamically based on VAD."""
+        logger.info("Starting VAD-based batch process buffer...")
+
+        try:
+            model = load_silero_vad()
+            logger.info("Silero VAD model loaded successfully via package.")
+        except Exception as e:
+            logger.error(f"Failed to load VAD model: {e}")
+            return
 
         while not stop_event.is_set():
-            # Wait for enough audio to accumulate
-            time.sleep(batch_duration_in_sec)
+            time.sleep(check_interval)
 
-            self.process_buffer()
+            if not self.buffer:
+                continue
+
+            # Check total accumulated audio
+            total_samples = sum(len(chunk) for chunk in self.buffer)
+            # Require at least 5 seconds of audio
+            if total_samples < self.RATE * 5:
+                continue
+
+            # Concatenate safely for VAD check
+            current_audio = np.concatenate(self.buffer, axis=0).flatten()
+            audio_tensor = torch.from_numpy(current_audio).float()
+
+            # Check if last 1.5 seconds is silence
+            # 1.5 seconds * 16000 = 24000 samples
+            last_samples = audio_tensor[-24000:]
+
+            # silero-vad expects 1D float32 tensor
+            timestamps = get_speech_timestamps(
+                last_samples, model, sampling_rate=self.RATE
+            )
+
+            if not timestamps:
+                # No speech in the last 1.5 seconds, we have a pause! Process the buffer.
+                self.process_buffer()
 
         logger.info("Stopping batch process buffer...")
 
@@ -74,13 +106,14 @@ class AudioCapturer:
         self.process_buffer()
 
     def process_buffer(self) -> None:
-        """Process the current audio buffer and clear it."""
+        """Process the current audio buffer and clear it atomically."""
         if self.buffer:
-            # Concatenate all recorded chunks
-            audio_data = np.concatenate(self.buffer, axis=0).flatten()
-
-            # Clear buffer after batching
+            # Copy references and clear atomically to prevent losing new incoming chunks
+            current_chunks = self.buffer[:]
             self.buffer.clear()
+
+            # Concatenate all recorded chunks
+            audio_data = np.concatenate(current_chunks, axis=0).flatten()
 
             conversation_text = self.transcriber.run(audio_data)
 

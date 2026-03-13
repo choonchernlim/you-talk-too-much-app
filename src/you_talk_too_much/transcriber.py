@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -8,22 +9,21 @@ from typing import Any
 import mlx_whisper
 import numpy as np
 import torch
-from pyannote.audio import Pipeline
-from pyannote.audio.core.task import Problem, Resolution, Specifications
+from pyannote.audio import Inference, Model, Pipeline
+from scipy.spatial.distance import cdist
 
 from you_talk_too_much.log_config import setup_logger
 from you_talk_too_much.utils import append_file
 
-# Fix for PyTorch 2.6+ weight loading security changes
-if hasattr(torch.serialization, "add_safe_globals"):
-    torch.serialization.add_safe_globals(
-        [torch.torch_version.TorchVersion, Specifications, Problem, Resolution]
-    )
-
 logger = setup_logger(__name__)
 
-# Suppress FutureWarnings
+# Suppress FutureWarnings and PyTorch Lightning upgrade warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
+warnings.simplefilter(action="ignore", category=UserWarning)
+
+import logging
+
+logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
 # Thresholds for hallucination detection
 NO_SPEECH_PROB_THRESHOLD = 0.7
@@ -83,16 +83,62 @@ class MLXTranscriber(Transcriber):
 
         self.whisper_model = os.getenv("HF_WHISPER_MODEL")
         self.diarization_model = os.getenv("HF_DIARIZATION_MODEL")
+        self.embedding_model_name = os.getenv("HF_EMBEDDING_MODEL")
         self.hf_token = os.getenv("HF_TOKEN")
 
-        self.pipeline = Pipeline.from_pretrained(self.diarization_model)
+        # PyTorch 2.6 default weights_only=True breaks pyannote model loading
+        _original_load = torch.load
 
-        if self.pipeline:
-            device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-            self.pipeline.to(device)
-            logger.info(f"Diarization pipeline loaded on {device}")
-        else:
-            logger.error("Failed to load diarization pipeline.")
+        # Suppress hardcoded prints inside pyannote
+        _stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+
+        try:
+            torch.load = lambda *args, **kwargs: _original_load(*args, **{**kwargs, "weights_only": False})
+
+            self.pipeline = Pipeline.from_pretrained(self.diarization_model)
+
+            if self.pipeline:
+                self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+                self.pipeline.to(self.device)
+
+                # Temporarily restore stdout for our own logs
+                sys.stdout.close()
+                sys.stdout = _stdout
+                logger.info(f"Diarization pipeline loaded on {self.device}")
+                sys.stdout = open(os.devnull, "w")
+            else:
+                self.device = torch.device("cpu")
+                sys.stdout.close()
+                sys.stdout = _stdout
+                logger.error("Failed to load diarization pipeline.")
+                sys.stdout = open(os.devnull, "w")
+
+            try:
+                self.embedding_model = Model.from_pretrained(
+                    self.embedding_model_name, use_auth_token=self.hf_token
+                )
+                self.embedding_model.to(self.device)
+                self.embedding_model.eval()
+
+                sys.stdout.close()
+                sys.stdout = _stdout
+                logger.info(f"Embedding model loaded on {self.device}")
+            except Exception as e:
+                sys.stdout.close()
+                sys.stdout = _stdout
+                logger.error(f"Failed to load embedding model: {e}")
+                self.embedding_model = None
+
+        finally:
+            torch.load = _original_load
+            if sys.stdout is not _stdout:
+                sys.stdout.close()
+                sys.stdout = _stdout
+
+        # Global speaker tracking
+        self.global_speakers: dict[str, np.ndarray] = {}
+        self.speaker_counter = 0
 
     def _get_dominant_speaker(
         self, segment_start: float, segment_end: float, diarization: Any
@@ -142,6 +188,50 @@ class MLXTranscriber(Transcriber):
         else:
             diarization_output = None
 
+        # Cross-chunk speaker matching
+        local_to_global = {}
+        if self.embedding_model and diarization_output:
+            inference = Inference(self.embedding_model, window="whole")
+            for local_speaker in diarization_output.labels():
+                embeddings = []
+                for turn, _, speaker_label in diarization_output.itertracks(yield_label=True):
+                    if speaker_label != local_speaker:
+                        continue
+                    if turn.end - turn.start < 0.5:
+                        continue
+                    try:
+                        emb = inference.crop({"waveform": waveform, "sample_rate": 16000}, turn)
+                        embeddings.append(emb)
+                    except Exception as e:
+                        logger.error(f"Embedding error: {e}")
+
+                if not embeddings:
+                    continue
+
+                avg_embedding = np.mean(np.vstack(embeddings), axis=0)
+
+                if not self.global_speakers:
+                    global_id = f"SPEAKER_{self.speaker_counter:02d}"
+                    self.speaker_counter += 1
+                    self.global_speakers[global_id] = avg_embedding
+                    local_to_global[local_speaker] = global_id
+                else:
+                    global_ids = list(self.global_speakers.keys())
+                    global_embs = np.vstack(list(self.global_speakers.values()))
+                    distances = cdist([avg_embedding], global_embs, metric="cosine")[0]
+                    min_idx = np.argmin(distances)
+                    min_dist = distances[min_idx]
+
+                    if min_dist < 0.3: # Match threshold
+                        matched_id = global_ids[min_idx]
+                        local_to_global[local_speaker] = matched_id
+                        self.global_speakers[matched_id] = 0.9 * self.global_speakers[matched_id] + 0.1 * avg_embedding
+                    else:
+                        global_id = f"SPEAKER_{self.speaker_counter:02d}"
+                        self.speaker_counter += 1
+                        self.global_speakers[global_id] = avg_embedding
+                        local_to_global[local_speaker] = global_id
+
         formatted_lines = []
         current_speaker = None
         current_text_buffer = []
@@ -151,6 +241,7 @@ class MLXTranscriber(Transcriber):
                 segment_speaker = self._get_dominant_speaker(
                     segment["start"], segment["end"], diarization_output
                 )
+                segment_speaker = local_to_global.get(segment_speaker, segment_speaker)
             else:
                 segment_speaker = "UNKNOWN"
 

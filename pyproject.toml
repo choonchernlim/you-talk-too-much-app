@@ -25,6 +25,7 @@ dependencies = [
     "torchaudio==2.6.0",
     "typer>=0.15.0",
     "huggingface-hub<0.25.0",
+    "silero-vad>=6.2.1",
 ]
 
 [project.scripts]
