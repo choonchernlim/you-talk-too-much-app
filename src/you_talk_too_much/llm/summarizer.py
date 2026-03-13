@@ -2,8 +2,7 @@ from google import genai
 from google.oauth2 import service_account
 from markdown import markdown
 
-from you_talk_too_much.log_config import setup_logger
-from you_talk_too_much.utils import read_file, write_file
+from you_talk_too_much.cli.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -13,7 +12,7 @@ class LLM:
 
     def __init__(self, project: str, location: str, sa_key: str, model: str) -> None:
         """Initialize the LLM client with Vertex AI."""
-        logger.info("Initializing Vertex LLM (using new google-genai SDK)...")
+        logger.info(f"Initializing Vertex LLM ({model})...")
 
         # Authentication using service account key file
         credentials = service_account.Credentials.from_service_account_file(
@@ -25,9 +24,9 @@ class LLM:
         )
         self.model_id = model
 
-    def summarize(self, conversation_file_path: str) -> str:
-        """Summarize the conversation text using Vertex AI."""
-        logger.info(f"Summarizing conversation [File: {conversation_file_path}] ...")
+    def summarize(self, doc_content: str) -> tuple[str, str]:
+        """Summarize the conversation text using Vertex AI. Returns (markdown, html)."""
+        logger.info("Summarizing conversation text...")
 
         prompt = """
         You are a helpful agent, capable in summarizing lengthy conversations clearly.
@@ -70,8 +69,6 @@ class LLM:
         </MARKDOWN RULES>
         """
 
-        doc_content = read_file(conversation_file_path)
-
         response = self.client.models.generate_content(
             model=self.model_id,
             contents=[prompt, doc_content],
@@ -84,14 +81,8 @@ class LLM:
 
         if not response.text:
             logger.error("Empty response from LLM.")
-            return ""
+            return "", ""
 
         html_content = markdown(response.text)
 
-        # remove file extension
-        filename = conversation_file_path.rsplit(".", 1)[0]
-
-        write_file(f"{filename}.md", response.text)
-        write_file(f"{filename}.html", html_content)
-
-        return html_content
+        return response.text, html_content

@@ -1,4 +1,5 @@
 import time
+from collections.abc import Callable
 from threading import Event
 from typing import Any
 
@@ -7,8 +8,7 @@ import sounddevice as sd
 import torch
 from silero_vad import get_speech_timestamps, load_silero_vad
 
-from you_talk_too_much.log_config import setup_logger
-from you_talk_too_much.transcriber import Transcriber
+from you_talk_too_much.cli.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -18,11 +18,11 @@ class AudioCapturer:
 
     RATE = 16000
 
-    def __init__(self, transcriber: Transcriber) -> None:
+    def __init__(self, on_audio_ready: Callable[[np.ndarray], None]) -> None:
         """Initialize the audio capturer."""
         logger.info("Initializing Audio Capturer...")
 
-        self.transcriber = transcriber
+        self.on_audio_ready = on_audio_ready
 
         # Buffer to store batched audio data as list of numpy arrays
         self.buffer: list[np.ndarray] = []
@@ -31,8 +31,6 @@ class AudioCapturer:
         """Start capturing audio in a loop until stop_event is set."""
         logger.info("Starting audio capture...")
 
-        # create new transcript and clear the audio buffer
-        self.transcriber.create_new_transcript_directory()
         self.buffer.clear()
 
         def _audio_callback(
@@ -115,8 +113,5 @@ class AudioCapturer:
             # Concatenate all recorded chunks
             audio_data = np.concatenate(current_chunks, axis=0).flatten()
 
-            conversation_text = self.transcriber.run(audio_data)
-
-            # Print the conversation text to console
-            if conversation_text:
-                logger.info("Conversation:\n" + conversation_text.strip())
+            # Pass the audio data via the callback
+            self.on_audio_ready(audio_data)

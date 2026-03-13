@@ -17,8 +17,19 @@ class ColoredFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Apply color based on the level of the log message."""
+        original_name = record.name
+        parts = original_name.split(".")
+        
+        # Abbreviate intermediate parts to their first letter
+        # e.g. "you_talk_too_much.transcription.transcriber" -> "y.t.transcriber"
+        if len(parts) > 1:
+            abbreviated_parts = [p[0] for p in parts[:-1]] + [parts[-1]]
+            record.name = ".".join(abbreviated_parts)
+
         log_color = COLORS.get(record.levelno, RESET)
         message = super().format(record)
+
+        record.name = original_name  # Restore original name
         return f"{log_color}{message}{RESET}"
 
 
@@ -33,7 +44,10 @@ def setup_logger(name: str) -> logging.Logger:
         console_handler.setLevel(logging.INFO)
 
         # Create a formatter and set it for the handler
-        formatter = ColoredFormatter("%(asctime)s %(levelname)-8s %(name)s %(message)s")
+        formatter = ColoredFormatter(
+            "%(asctime)s %(levelname)-5s %(name)-20s %(message)s",
+            datefmt="%I:%M:%S%p",
+        )
         console_handler.setFormatter(formatter)
 
         # Add the handler to the logger

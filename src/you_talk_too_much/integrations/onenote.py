@@ -1,7 +1,7 @@
 import msal
 import requests
 
-from you_talk_too_much.log_config import setup_logger
+from you_talk_too_much.cli.logger import setup_logger
 
 logger = setup_logger(__name__)
 
