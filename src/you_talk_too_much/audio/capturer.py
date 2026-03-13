@@ -86,7 +86,7 @@ class AudioCapturer:
             )
 
             if not timestamps:
-                # No speech in the last 1.5 seconds, we have a pause! Process the buffer.
+                # No speech in the last 1.5 seconds, we have a pause!
                 self.process_buffer()
 
         logger.info("Stopping batch process buffer...")

@@ -1,13 +1,16 @@
 import json
+import logging
 import os
-import sys
 import warnings
-from typing import Any, Dict, cast
+from collections.abc import Generator
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from typing import Any
 
 import mlx_whisper
 import numpy as np
 import torch
 from pyannote.audio import Inference, Model, Pipeline
+from pyannote.core import Segment
 from scipy.spatial.distance import cdist
 
 from you_talk_too_much.cli.logger import setup_logger
@@ -19,17 +22,37 @@ logger = setup_logger(__name__)
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(action="ignore", category=UserWarning)
 
-import logging
-
 # Suppress all Lightning-related loggers
-for name in ["lightning", "pytorch_lightning", "lightning.pytorch.utilities.migration.utils"]:
-    l = logging.getLogger(name)
-    l.setLevel(logging.ERROR)
-    l.propagate = False
+for logger_name in [
+    "lightning",
+    "pytorch_lightning",
+    "lightning.pytorch.utilities.migration.utils",
+]:
+    lightning_logger = logging.getLogger(logger_name)
+    lightning_logger.setLevel(logging.ERROR)
+    lightning_logger.propagate = False
 
 # Thresholds for hallucination detection
 NO_SPEECH_PROB_THRESHOLD = 0.7
 COMPRESSION_RATIO_THRESHOLD = 2.4
+
+# Constants for speaker matching
+MIN_TURN_DURATION = 1.2
+MIN_CLAMPED_DURATION = 0.1
+COSINE_SIMILARITY_MATCH_THRESHOLD = 0.55
+COSINE_SIMILARITY_UPDATE_THRESHOLD = 0.25
+SPEAKER_EMBEDDING_UPDATE_WEIGHT = 0.1
+
+
+@contextmanager
+def suppress_output() -> Generator[None, None, None]:
+    """Context manager to suppress stdout and stderr."""
+    with (
+        open(os.devnull, "w") as devnull,
+        redirect_stdout(devnull),
+        redirect_stderr(devnull),
+    ):
+        yield
 
 
 class MLXTranscriber:
@@ -42,8 +65,8 @@ class MLXTranscriber:
         self.embedding_model_name = settings.hf_embedding_model
         self.hf_token = settings.hf_token
 
-        self.pipeline = None
-        self.embedding_model = None
+        self.pipeline: Pipeline | None = None
+        self.embedding_model: Model | None = None
         self.device = torch.device("cpu")
 
         # Global speaker tracking
@@ -56,20 +79,16 @@ class MLXTranscriber:
         """Load ML models safely and quietly."""
         logger.info(f"Initializing Transcriber ({self.whisper_model})...")
 
-        _stdout = sys.stdout
-        _stderr = sys.stderr
-
         try:
             logger.info(
-                f"Initializing Speaker Diarization Pipeline ({self.diarization_model})..."
+                "Initializing Speaker Diarization Pipeline "
+                f"({self.diarization_model})..."
             )
 
-            # Suppress hardcoded Pyannote/HF/Lightning prints
-            sys.stdout = open(os.devnull, "w")
-            sys.stderr = open(os.devnull, "w")
-            self.pipeline = Pipeline.from_pretrained(
-                self.diarization_model, token=self.hf_token
-            )
+            with suppress_output():
+                self.pipeline = Pipeline.from_pretrained(
+                    self.diarization_model, token=self.hf_token
+                )
 
             if self.pipeline:
                 self.device = torch.device(
@@ -77,33 +96,23 @@ class MLXTranscriber:
                 )
                 self.pipeline.to(self.device)
 
-            # Briefly restore to log the next step
-            sys.stdout.close()
-            sys.stderr.close()
-            sys.stdout = _stdout
-            sys.stderr = _stderr
-
             logger.info(
                 f"Initializing Embedding Model ({self.embedding_model_name})..."
             )
 
-            sys.stdout = open(os.devnull, "w")
-            sys.stderr = open(os.devnull, "w")
-            self.embedding_model = Model.from_pretrained(
-                self.embedding_model_name, token=self.hf_token
-            )
-            self.embedding_model.to(self.device)
-            self.embedding_model.eval()
+            with suppress_output():
+                self.embedding_model = Model.from_pretrained(
+                    self.embedding_model_name, token=self.hf_token
+                )
 
-        finally:
-            if sys.stdout is not _stdout:
-                sys.stdout.close()
-                sys.stdout = _stdout
-            if sys.stderr is not _stderr:
-                sys.stderr.close()
-                sys.stderr = _stderr
+            if self.embedding_model:
+                self.embedding_model.to(self.device)
+                self.embedding_model.eval()
 
-    def transcribe(self, audio_data: np.ndarray) -> Dict[str, Any]:
+        except Exception as e:
+            logger.error(f"Error initializing models: {e}")
+
+    def transcribe(self, audio_data: np.ndarray) -> dict[str, Any]:
         """Run MLX whisper transcription."""
         return mlx_whisper.transcribe(
             audio_data, path_or_hf_repo=self.whisper_model, language="en"
@@ -127,48 +136,56 @@ class MLXTranscriber:
         waveform = torch.from_numpy(audio_data).unsqueeze(0)
         return self.pipeline({"waveform": waveform, "sample_rate": 16000})
 
+    def _get_speaker_embeddings(
+        self,
+        annotation: Any,
+        local_speaker: str,
+        waveform: torch.Tensor,
+        duration: float,
+        inference: Inference,
+    ) -> list[np.ndarray]:
+        """Extract and collect embeddings for a specific local speaker."""
+        embeddings = []
+        for turn, _, speaker_label in annotation.itertracks(yield_label=True):
+            if speaker_label != local_speaker:
+                continue
+            if turn.end - turn.start < MIN_TURN_DURATION:
+                continue
+            try:
+                clamped_turn = turn
+                if turn.end > duration:
+                    clamped_turn = Segment(turn.start, min(turn.end, duration))
+
+                if clamped_turn.end - clamped_turn.start < MIN_CLAMPED_DURATION:
+                    continue
+
+                emb = inference.crop(
+                    {"waveform": waveform, "sample_rate": 16000}, clamped_turn
+                )
+                embeddings.append(emb)
+            except Exception as e:
+                logger.debug(f"Embedding error (clamped {turn} to {duration}s): {e}")
+        return embeddings
+
     def match_speakers(
-            self, audio_data: np.ndarray, diarization_output: Any
+        self, audio_data: np.ndarray, diarization_output: Any
     ) -> dict[str, str]:
         """Match local speakers to global speakers using embeddings."""
         local_to_global = {}
         if not self.embedding_model or not diarization_output:
             return local_to_global
 
-        # Handle pyannote-audio 4.x DiarizeOutput object
-        annotation = getattr(diarization_output, "speaker_diarization", diarization_output)
-
+        annotation = getattr(
+            diarization_output, "speaker_diarization", diarization_output
+        )
         waveform = torch.from_numpy(audio_data).unsqueeze(0)
         inference = Inference(self.embedding_model, window="whole")
         duration = audio_data.shape[0] / 16000
 
         for local_speaker in annotation.labels():
-            embeddings = []
-            for turn, _, speaker_label in annotation.itertracks(
-                    yield_label=True
-            ):
-                if speaker_label != local_speaker:
-                    continue
-                # Ignore short segments
-                if turn.end - turn.start < 1.2:
-                    continue
-                try:
-                    # Clamp turn to waveform duration
-                    clamped_turn = turn
-                    if turn.end > duration:
-                        from pyannote.core import Segment
-                        clamped_turn = Segment(turn.start, min(turn.end, duration))
-
-                    if clamped_turn.end - clamped_turn.start < 0.1:
-                        continue
-
-                    emb = inference.crop(
-                        {"waveform": waveform, "sample_rate": 16000}, clamped_turn
-                    )
-                    embeddings.append(emb)
-                except Exception as e:
-                    logger.debug(f"Embedding error (clamped {turn} to {duration}s): {e}")
-
+            embeddings = self._get_speaker_embeddings(
+                annotation, local_speaker, waveform, duration, inference
+            )
             if not embeddings:
                 continue
 
@@ -177,44 +194,53 @@ class MLXTranscriber:
                 continue
 
             avg_embedding = np.mean(stacked_embeddings, axis=0)
-
-            if not self.global_speakers:
-                global_id = f"SPEAKER_{self.speaker_counter:02d}"
-                self.speaker_counter += 1
-                self.global_speakers[global_id] = avg_embedding
-                local_to_global[local_speaker] = global_id
-            else:
-                global_ids = list(self.global_speakers.keys())
-                # Ensure global_embs is correctly stacked
-                global_embs = np.vstack(list(self.global_speakers.values()))
-                if global_embs.size == 0:
-                    continue
-                
-                distances = cdist([avg_embedding], global_embs, metric="cosine")[0]
-                min_idx = np.argmin(distances)
-                min_dist = distances[min_idx]
-
-                if min_dist < 0.55:
-                    matched_id = global_ids[min_idx]
-                    local_to_global[local_speaker] = matched_id
-                    if min_dist < 0.25:
-                        self.global_speakers[matched_id] = (
-                                0.9 * self.global_speakers[matched_id] + 0.1 * avg_embedding
-                        )
-                else:
-                    global_id = f"SPEAKER_{self.speaker_counter:02d}"
-                    self.speaker_counter += 1
-                    self.global_speakers[global_id] = avg_embedding
-                    local_to_global[local_speaker] = global_id
+            self._assign_global_id(local_speaker, avg_embedding, local_to_global)
 
         return local_to_global
 
+    def _assign_global_id(
+        self,
+        local_speaker: str,
+        avg_embedding: np.ndarray,
+        local_to_global: dict[str, str],
+    ) -> None:
+        """Assign or match a global speaker ID to a local speaker."""
+        if not self.global_speakers:
+            global_id = f"SPEAKER_{self.speaker_counter:02d}"
+            self.speaker_counter += 1
+            self.global_speakers[global_id] = avg_embedding
+            local_to_global[local_speaker] = global_id
+            return
+
+        global_ids = list(self.global_speakers.keys())
+        global_embs = np.vstack(list(self.global_speakers.values()))
+        if global_embs.size == 0:
+            return
+
+        distances = cdist([avg_embedding], global_embs, metric="cosine")[0]
+        min_idx = np.argmin(distances)
+        min_dist = distances[min_idx]
+
+        if min_dist < COSINE_SIMILARITY_MATCH_THRESHOLD:
+            matched_id = global_ids[min_idx]
+            local_to_global[local_speaker] = matched_id
+            if min_dist < COSINE_SIMILARITY_UPDATE_THRESHOLD:
+                self.global_speakers[matched_id] = (
+                    1 - SPEAKER_EMBEDDING_UPDATE_WEIGHT
+                ) * self.global_speakers[
+                    matched_id
+                ] + SPEAKER_EMBEDDING_UPDATE_WEIGHT * avg_embedding
+        else:
+            global_id = f"SPEAKER_{self.speaker_counter:02d}"
+            self.speaker_counter += 1
+            self.global_speakers[global_id] = avg_embedding
+            local_to_global[local_speaker] = global_id
+
     def _get_dominant_speaker(
-            self, segment_start: float, segment_end: float, diarization: Any
+        self, segment_start: float, segment_end: float, diarization: Any
     ) -> str:
         """Finds the dominant speaker during a given segment."""
         speaker_durations: dict[str, float] = {}
-        # Handle pyannote-audio 4.x DiarizeOutput object
         annotation = getattr(diarization, "speaker_diarization", diarization)
 
         for turn, _, speaker_id in annotation.itertracks(yield_label=True):
@@ -224,7 +250,7 @@ class MLXTranscriber:
 
             if overlap_duration > 0:
                 speaker_durations[speaker_id] = (
-                        speaker_durations.get(speaker_id, 0.0) + overlap_duration
+                    speaker_durations.get(speaker_id, 0.0) + overlap_duration
                 )
 
         if speaker_durations:
@@ -232,10 +258,10 @@ class MLXTranscriber:
         return "SPEAKER_UNKNOWN"
 
     def format_conversation(
-            self,
-            segments: list[dict],
-            diarization_output: Any,
-            local_to_global: dict[str, str],
+        self,
+        segments: list[dict],
+        diarization_output: Any,
+        local_to_global: dict[str, str],
     ) -> str:
         """Format the transcribed segments with speaker labels."""
         formatted_lines = []
