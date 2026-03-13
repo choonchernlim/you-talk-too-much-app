@@ -19,6 +19,30 @@ Feeling like you can't keep up with all the meeting discussions lately? This app
 - **Audio**: `sounddevice` & `silero-vad`
 - **Dependency Management**: `uv`
 
+## How it Works
+
+```mermaid
+flowchart TD
+    A[User] -- runs --> APP[App]
+    APP -- displays --> MENU[CLI Menu]
+
+    MENU -- Press '1' --> DEC1{Recording?}
+    DEC1 -- N --> 1A[Start Audio Capture]
+    1A --> 1B[VAD-based Batching]
+    1B --> 1C[MLX-Whisper Transcription]
+    1C --> 1D[Pyannote Diarization]
+    1D --> 1E[Log Conversation to CLI]
+
+    MENU -- Press '2' --> DEC2{Recording?}
+    DEC2 -- Y --> 2A[Stop Audio Capture]
+    2A --> 2B[Export Final Transcript]
+    2B --> 2C[Vertex AI Summarization]
+    2C --> 2D[Upload to OneNote]
+    2D --> MENU
+
+    MENU -- Press '3' --> 3A[Quit]
+```
+
 ## Prerequisites
 
 1. **Hardware**: Apple Silicon Mac (M1/M2/M3) is highly recommended for `mlx` performance.
@@ -58,29 +82,6 @@ Under the [applescript/](applescript) folder, you can use the bundled `.app` fil
 2. **Stop existing capture**: Finalizes the current session, generates the summary, and uploads it to OneNote.
 3. **Quit program**: Exits the application.
 
-## How it Works
-
-```mermaid
-flowchart TD
-    A[User] -- runs --> APP[App]
-    APP -- displays --> MENU[CLI Menu]
-
-    MENU -- Press '1' --> DEC1{Recording?}
-    DEC1 -- N --> 1A[Start Audio Capture]
-    1A --> 1B[VAD-based Batching]
-    1B --> 1C[MLX-Whisper Transcription]
-    1C --> 1D[Pyannote Diarization]
-    1D --> 1E[Log Conversation to CLI]
-
-    MENU -- Press '2' --> DEC2{Recording?}
-    DEC2 -- Y --> 2A[Stop Audio Capture]
-    2A --> 2B[Export Final Transcript]
-    2B --> 2C[Vertex AI Summarization]
-    2C --> 2D[Upload to OneNote]
-    2D --> MENU
-
-    MENU -- Press '3' --> 3A[Quit]
-```
 
 ## License
 MIT
