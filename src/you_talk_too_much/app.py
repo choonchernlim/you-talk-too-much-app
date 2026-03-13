@@ -46,7 +46,7 @@ class AppSession:
             self.file_manager.append_raw_data(raw_json_str)
 
         if formatted_text:
-            logger.info(f"Conversation:\n{formatted_text.strip()}")
+            logger.info(formatted_text.strip())
             self.file_manager.append_conversation(formatted_text)
 
     def start(self) -> None:

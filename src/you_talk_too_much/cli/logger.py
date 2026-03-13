@@ -26,9 +26,16 @@ class ColoredFormatter(logging.Formatter):
             abbreviated_parts = [p[0] for p in parts[:-1]] + [parts[-1]]
             record.name = ".".join(abbreviated_parts)
 
-        log_color = COLORS.get(record.levelno, RESET)
         message = super().format(record)
 
+        # Handle multi-line messages by indenting subsequent lines
+        if "\n" in message:
+            # prefix length: Time(10) + S(1) + Level(5) + S(1) + Name(20) + S(1) = 38
+            prefix_len = 38
+            indent = " " * prefix_len
+            message = message.replace("\n", "\n" + indent)
+
+        log_color = COLORS.get(record.levelno, RESET)
         record.name = original_name  # Restore original name
         return f"{log_color}{message}{RESET}"
 

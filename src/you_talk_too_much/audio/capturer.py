@@ -59,7 +59,6 @@ class AudioCapturer:
         logger.info("Starting VAD-based batch process buffer...")
 
         model = load_silero_vad()
-        logger.info("Silero VAD model loaded successfully via package.")
 
         while not stop_event.is_set():
             time.sleep(check_interval)

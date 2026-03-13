@@ -21,7 +21,11 @@ warnings.simplefilter(action="ignore", category=UserWarning)
 
 import logging
 
-logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
+# Suppress all Lightning-related loggers
+for name in ["lightning", "pytorch_lightning", "lightning.pytorch.utilities.migration.utils"]:
+    l = logging.getLogger(name)
+    l.setLevel(logging.ERROR)
+    l.propagate = False
 
 # Thresholds for hallucination detection
 NO_SPEECH_PROB_THRESHOLD = 0.7
@@ -52,22 +56,20 @@ class MLXTranscriber:
         """Load ML models safely and quietly."""
         logger.info(f"Initializing Transcriber ({self.whisper_model})...")
 
-        # PyTorch 2.6 default weights_only=True breaks pyannote model loading
-        _original_load = torch.load
         _stdout = sys.stdout
+        _stderr = sys.stderr
 
         try:
-            torch.load = lambda *args, **kwargs: _original_load(
-                *args, **{**kwargs, "weights_only": False}
-            )
-
             logger.info(
                 f"Initializing Speaker Diarization Pipeline ({self.diarization_model})..."
             )
 
-            # Suppress hardcoded Pyannote/HF prints
+            # Suppress hardcoded Pyannote/HF/Lightning prints
             sys.stdout = open(os.devnull, "w")
-            self.pipeline = Pipeline.from_pretrained(self.diarization_model)
+            sys.stderr = open(os.devnull, "w")
+            self.pipeline = Pipeline.from_pretrained(
+                self.diarization_model, token=self.hf_token
+            )
 
             if self.pipeline:
                 self.device = torch.device(
@@ -75,24 +77,31 @@ class MLXTranscriber:
                 )
                 self.pipeline.to(self.device)
 
+            # Briefly restore to log the next step
             sys.stdout.close()
+            sys.stderr.close()
             sys.stdout = _stdout
+            sys.stderr = _stderr
+
             logger.info(
                 f"Initializing Embedding Model ({self.embedding_model_name})..."
             )
 
             sys.stdout = open(os.devnull, "w")
+            sys.stderr = open(os.devnull, "w")
             self.embedding_model = Model.from_pretrained(
-                self.embedding_model_name, use_auth_token=self.hf_token
+                self.embedding_model_name, token=self.hf_token
             )
             self.embedding_model.to(self.device)
             self.embedding_model.eval()
 
         finally:
-            torch.load = _original_load
             if sys.stdout is not _stdout:
                 sys.stdout.close()
                 sys.stdout = _stdout
+            if sys.stderr is not _stderr:
+                sys.stderr.close()
+                sys.stderr = _stderr
 
     def transcribe(self, audio_data: np.ndarray) -> Dict[str, Any]:
         """Run MLX whisper transcription."""
@@ -126,12 +135,16 @@ class MLXTranscriber:
         if not self.embedding_model or not diarization_output:
             return local_to_global
 
+        # Handle pyannote-audio 4.x DiarizeOutput object
+        annotation = getattr(diarization_output, "speaker_diarization", diarization_output)
+
         waveform = torch.from_numpy(audio_data).unsqueeze(0)
         inference = Inference(self.embedding_model, window="whole")
+        duration = audio_data.shape[0] / 16000
 
-        for local_speaker in diarization_output.labels():
+        for local_speaker in annotation.labels():
             embeddings = []
-            for turn, _, speaker_label in diarization_output.itertracks(
+            for turn, _, speaker_label in annotation.itertracks(
                     yield_label=True
             ):
                 if speaker_label != local_speaker:
@@ -140,17 +153,30 @@ class MLXTranscriber:
                 if turn.end - turn.start < 1.2:
                     continue
                 try:
+                    # Clamp turn to waveform duration
+                    clamped_turn = turn
+                    if turn.end > duration:
+                        from pyannote.core import Segment
+                        clamped_turn = Segment(turn.start, min(turn.end, duration))
+
+                    if clamped_turn.end - clamped_turn.start < 0.1:
+                        continue
+
                     emb = inference.crop(
-                        {"waveform": waveform, "sample_rate": 16000}, turn
+                        {"waveform": waveform, "sample_rate": 16000}, clamped_turn
                     )
                     embeddings.append(emb)
                 except Exception as e:
-                    logger.error(f"Embedding error: {e}")
+                    logger.debug(f"Embedding error (clamped {turn} to {duration}s): {e}")
 
             if not embeddings:
                 continue
 
-            avg_embedding = np.mean(np.vstack(embeddings), axis=0)
+            stacked_embeddings = np.vstack(embeddings)
+            if stacked_embeddings.size == 0:
+                continue
+
+            avg_embedding = np.mean(stacked_embeddings, axis=0)
 
             if not self.global_speakers:
                 global_id = f"SPEAKER_{self.speaker_counter:02d}"
@@ -159,7 +185,11 @@ class MLXTranscriber:
                 local_to_global[local_speaker] = global_id
             else:
                 global_ids = list(self.global_speakers.keys())
+                # Ensure global_embs is correctly stacked
                 global_embs = np.vstack(list(self.global_speakers.values()))
+                if global_embs.size == 0:
+                    continue
+                
                 distances = cdist([avg_embedding], global_embs, metric="cosine")[0]
                 min_idx = np.argmin(distances)
                 min_dist = distances[min_idx]
@@ -184,7 +214,10 @@ class MLXTranscriber:
     ) -> str:
         """Finds the dominant speaker during a given segment."""
         speaker_durations: dict[str, float] = {}
-        for turn, _, speaker_id in diarization.itertracks(yield_label=True):
+        # Handle pyannote-audio 4.x DiarizeOutput object
+        annotation = getattr(diarization, "speaker_diarization", diarization)
+
+        for turn, _, speaker_id in annotation.itertracks(yield_label=True):
             overlap_start = max(segment_start, turn.start)
             overlap_end = min(segment_end, turn.end)
             overlap_duration = max(0.0, overlap_end - overlap_start)
