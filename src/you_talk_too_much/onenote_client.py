@@ -1,8 +1,5 @@
-import os
-
 import msal
 import requests
-from msal_extensions import build_encrypted_persistence, PersistedTokenCache
 
 from you_talk_too_much.log_config import setup_logger
 
@@ -10,87 +7,93 @@ logger = setup_logger(__name__)
 
 
 class OneNoteClient:
-    def __init__(self, onenote_section_name, az_client_id, az_tenant_id) -> None:
-        logger.info('Initializing OneNote Client...')
+    """OneNote client using Microsoft Graph API."""
+
+    def __init__(
+        self, onenote_section_name: str, az_client_id: str, az_tenant_id: str
+    ) -> None:
+        """Initialize the OneNote client."""
+        logger.info("Initializing OneNote Client...")
 
         self.az_client_id = az_client_id
         self.az_tenant_id = az_tenant_id
+        self.onenote_section_name = onenote_section_name
 
-        # Set Chrome browser for interactive authentication
-        os.environ['BROWSER'] = 'open -a /Applications/Google\\ Chrome.app %s'
+        self.scopes = ["Notes.ReadWrite.All"]
+        self.authority = f"https://login.microsoftonline.com/{self.az_tenant_id}"
 
-        self.section_id = self.get_section_id_by_name(onenote_section_name)
+        # Initialize the MSAL public client
+        self.app = msal.PublicClientApplication(
+            self.az_client_id, authority=self.authority
+        )
 
     def get_headers(self) -> dict:
-        # always get a fresh access token to prevent it from expiration if it was fetched too soon
+        """Get headers with a fresh access token."""
+        # Always get a fresh access token to prevent expiration
         return {
-            'Authorization': f'Bearer {self._get_access_token()}',
-            'Accept': 'application/json',
-            'Content-Type': 'application/xhtml+xml'
+            "Authorization": f"Bearer {self._get_access_token()}",
+            "Content-Type": "text/html",
         }
 
     def _get_access_token(self) -> str:
-        app = msal.PublicClientApplication(
-            self.az_client_id,
-            authority=f'https://login.microsoftonline.com/{self.az_tenant_id}',
-            token_cache=PersistedTokenCache(build_encrypted_persistence('.msal_token_cache.json')),
-        )
-
-        scopes = ['Notes.Read', 'User.Read']
+        """Fetch an access token using MSAL."""
+        accounts = self.app.get_accounts()
         result = None
-        accounts = app.get_accounts()
 
         if accounts:
-            result = app.acquire_token_silent(scopes, account=accounts[0])
+            result = self.app.acquire_token_silent(self.scopes, account=accounts[0])
 
         if not result:
-            result = app.acquire_token_interactive(scopes=scopes)
+            result = self.app.acquire_token_interactive(scopes=self.scopes)
 
-        return result['access_token']
+        if "access_token" not in result:
+            raise Exception(f"Could not acquire access token: {result.get('error')}")
 
-    def get_pages(self, page_id='') -> dict:
-        url = f'https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}'
+        return result["access_token"]
 
-        response = requests.get(url, headers=self.get_headers())
-        response.raise_for_status()
-
+    def get_pages(self, page_id: str = "") -> dict:
+        """Fetch OneNote pages or a specific page."""
+        url = f"https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}"
+        response = requests.get(url, headers=self.get_headers(), timeout=10)
         return response.json()
 
     def create_page(self, title: str, html_summary: str) -> None:
-        logger.info(f'Creating OneNote page [Title: {title}] ...')
+        """Create a new page in the specified OneNote section."""
+        logger.info(f"Creating OneNote page [Title: {title}] ...")
 
-        url = f'https://graph.microsoft.com/v1.0/me/onenote/sections/{self.section_id}/pages'
+        section_id = self._get_section_id()
+        url = f"https://graph.microsoft.com/v1.0/me/onenote/sections/{section_id}/pages"
 
-        body = f"""
+        html_content = f"""
         <!DOCTYPE html>
-        <html htmlns="https://www.w3.org/1999/xhtml" lang="en-US">
-            <head>
-                <title>{title}</title>
-            </head>
-            <body style="font-family:Calibri;font-size:12pt">
-                <h1>Topics</h1>
-                <ul>
-                    <li>TBD</li>
-                </ul>
-
-                {html_summary.replace(f'<h1>', f'<br/><h1>')}
-            </body>
+        <html>
+        <head>
+            <title>{title}</title>
+        </head>
+        <body>
+            {html_summary}
+        </body>
         </html>
         """
 
-        response = requests.post(url, headers=self.get_headers(), data=body)
-        response.raise_for_status()
+        response = requests.post(
+            url, headers=self.get_headers(), data=html_content, timeout=10
+        )
 
-    def get_section_id_by_name(self, name: str) -> str:
-        url = 'https://graph.microsoft.com/v1.0/me/onenote/sections'
+        # 201 is the status code for 'Created'
+        if response.status_code == 201:  # noqa: PLR2004
+            logger.info("OneNote page created successfully.")
+        else:
+            logger.error(f"Failed to create OneNote page: {response.text}")
 
-        response = requests.get(url, headers=self.get_headers())
-        response.raise_for_status()
+    def _get_section_id(self) -> str:
+        """Find the ID of the section with the specified name."""
+        url = "https://graph.microsoft.com/v1.0/me/onenote/sections"
+        response = requests.get(url, headers=self.get_headers(), timeout=10)
+        sections = response.json().get("value", [])
 
-        sections = response.json()['value']
+        for section in sections:
+            if section["displayName"] == self.onenote_section_name:
+                return section["id"]
 
-        section_id = next((s['id'] for s in sections if s['displayName'] == name), None)
-
-        assert section_id is not None, f'Section [name: {name}] not found'
-
-        return section_id
+        raise Exception(f"Section '{self.onenote_section_name}' not found.")

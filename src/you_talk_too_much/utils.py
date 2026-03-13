@@ -1,34 +1,28 @@
-import sys
-import tty
-
-import termios
-
-
-def read_file(file_path) -> str:
-    with open(file_path, 'r') as file:
+def read_file(file_path: str) -> str:
+    """Read and return the content of the specified file."""
+    with open(file_path) as file:
         text = file.read()
-
     return text
 
 
-def write_file(file_path, text):
-    with open(file_path, 'w') as file:
+def write_file(file_path: str, text: str) -> None:
+    """Write the given text to the specified file."""
+    with open(file_path, "w") as file:
         file.write(text)
 
 
-def append_file(file_path, text):
-    with open(file_path, 'a') as file:
+def append_file(file_path: str, text: str) -> None:
+    """Append the given text to the specified file."""
+    with open(file_path, "a") as file:
         file.write(text)
 
 
-def get_key():
-    """
-    Captures and return a single key from the user.
-    This approach is used instead of input() because input() requires
-    the user to press Enter.
+def get_key() -> str:
+    """Captures and return a single key from the user."""
+    import sys
+    import termios
+    import tty
 
-    :return: A single key from the user
-    """
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:

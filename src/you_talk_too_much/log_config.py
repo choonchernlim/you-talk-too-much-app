@@ -1,40 +1,42 @@
 import logging
+import sys
+
+# Mapping log levels to colors
+COLORS: dict[int, str] = {
+    logging.DEBUG: "\033[0;37m",  # White
+    logging.INFO: "\033[0;32m",  # Green
+    logging.WARNING: "\033[0;33m",  # Yellow
+    logging.ERROR: "\033[0;31m",  # Red
+    logging.CRITICAL: "\033[1;41m",  # Red background
+}
+RESET = "\033[0m"
 
 
-# Define ANSI color codes
 class ColoredFormatter(logging.Formatter):
-    # Mapping log levels to colors
-    COLORS = {
-        logging.DEBUG: "\033[0;37m",  # White
-        logging.INFO: "\033[0;32m",  # Green
-        logging.WARNING: "\033[0;33m",  # Yellow
-        logging.ERROR: "\033[0;31m",  # Red
-        logging.CRITICAL: "\033[1;41m",  # Red background
-    }
-    RESET = "\033[0m"
+    """Custom logging formatter to provide colored output."""
 
-    def format(self, record):
-        # Apply color based on the level of the log message
-        log_color = self.COLORS.get(record.levelno, self.RESET)
+    def format(self, record: logging.LogRecord) -> str:
+        """Apply color based on the level of the log message."""
+        log_color = COLORS.get(record.levelno, RESET)
         message = super().format(record)
-        return f"{log_color}{message}{self.RESET}"
+        return f"{log_color}{message}{RESET}"
 
 
-# Setup logging with colored output
-def setup_logger(name):
+def setup_logger(name: str) -> logging.Logger:
+    """Setup logging with colored output."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
-    # Create a console handler
-    ch = logging.StreamHandler()
+    # Check if the logger already has handlers to avoid duplicate logs
+    if not logger.handlers:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
 
-    # Create a colored formatter
-    formatter = ColoredFormatter('%(asctime)s %(levelname)-8s %(name)-20s %(message)s')
+        # Create a formatter and set it for the handler
+        formatter = ColoredFormatter("%(asctime)s %(levelname)-8s %(name)s %(message)s")
+        console_handler.setFormatter(formatter)
 
-    # Set the formatter to the handler
-    ch.setFormatter(formatter)
-
-    # Add the handler to the logger
-    logger.addHandler(ch)
+        # Add the handler to the logger
+        logger.addHandler(console_handler)
 
     return logger
