@@ -28,6 +28,12 @@ flowchart TD
    A[User]:::defClass
    APP[App]:::appClass
    MENU[CLI Menu]:::appClass
+   OPT1[Start Recording Action]:::optClass
+   OPT2[Stop Recording Action]:::optClass
+   OPT3[Quit Action]:::optClass
+
+   FILESYSTEM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file Raw Conversation" }
+   ONENOTE:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file MS OneNote" }
 
    subgraph CaptureProcess[Background Capture Session]
        direction TB
@@ -46,13 +52,12 @@ flowchart TD
        STEP2D[Upload to OneNote]:::toolClass
    end
 
-   FILESYSTEM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file Raw Conversation" }
-   ONENOTE:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file MS OneNote" }
 
    A -- runs --> APP
    APP -- displays --> MENU
 
-   MENU -- Press '1' --> DEC1{Recording?}:::defClass
+   MENU -- Press '1' --> OPT1
+   OPT1 --> DEC1{Recording?}:::defClass
    DEC1 -- Y --> MENU
    DEC1 -- N --> STEP1A
    STEP1A -- Main Thread --> MENU
@@ -63,7 +68,8 @@ flowchart TD
    STEP1E --> FILESYSTEM
    STEP1E -- Next Batch --> STEP1B
 
-   MENU -- Press '2' --> DEC2{Recording?}:::defClass
+   MENU -- Press '2' --> OPT2
+   OPT2 --> DEC2{Recording?}:::defClass
    DEC2 -- N --> MENU
    DEC2 -- Y --> STEP2A
 
@@ -74,12 +80,14 @@ flowchart TD
 
    STEP2D -- Menu Loop --> MENU
 
-   MENU -- Press '3' --> DEC3{Recording?}:::defClass
+   MENU -- Press '3' --> OPT3
+   OPT3 --> DEC3{Recording?}:::defClass
    DEC3 -- Y --> STEP2A
    DEC3 -- N --> STEP3A[Quit]:::toolClass
    STEP2D -- Quit App --> STEP3A
 
    classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
+   classDef optClass fill:pink,stroke:#666666,color:#666666
    classDef appClass fill:lightgreen,stroke:green,color:#666666
    classDef toolClass fill:lightblue,stroke:blue,color:#666666
    classDef artifactClass fill:#CCCCCC,stroke:#666666,color:#666666
