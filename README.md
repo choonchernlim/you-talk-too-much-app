@@ -25,24 +25,74 @@ This app records, transcribes, and summarizes your conversations using state-of-
 
 ```mermaid
 flowchart TD
-    A[User] -- runs --> APP[App]
-    APP -- displays --> MENU[CLI Menu]
+   A[fa:fa-user User]
+   APP[fa:fa-gem App]
+   MENU[fa:fa-rectangle-list CLI Menu]
 
-    MENU -- Press '1' --> DEC1{Recording?}
-    DEC1 -- N --> 1A[Start Audio Capture]
-    1A --> 1B[VAD-based Batching]
-    1B --> 1C[MLX-Whisper Transcription]
-    1C --> 1D[Pyannote Diarization]
-    1D --> 1E[Log Conversation to CLI]
+   STEP1A[Start Audio Capture]
+   STEP1B[VAD-based Batching]
+   STEP1C[fa:fa-robot MLX-Whisper Transcription]
+   STEP1D[fa:fa-robot Pyannote Diarization]
+   STEP1E[Log Conversation]
 
-    MENU -- Press '2' --> DEC2{Recording?}
-    DEC2 -- Y --> 2A[Stop Audio Capture]
-    2A --> 2B[Export Final Transcript]
-    2B --> 2C[Vertex AI Summarization]
-    2C --> 2D[Upload to OneNote]
-    2D --> MENU
+   STEP2A[Stop Audio Capture]
+   STEP2B[Export Final Transcript]
+   STEP2C[fa:fa-robot Vertex AI Summarization]
+   STEP2D[fa:fa-microsoft Upload to OneNote]
 
-    MENU -- Press '3' --> 3A[Quit]
+   A -- runs --> APP
+   APP -- displays --> MENU
+
+   MENU -- Press '1' --> DEC1{Recording?}
+   DEC1 -- N --> STEP1A
+   STEP1A --> STEP1B
+   STEP1B --> STEP1C
+   STEP1C --> STEP1D
+   STEP1D --> STEP1E
+
+   MENU -- Press '2' --> DEC2{Recording?}
+   DEC2 -- Y --> STEP2A
+   STEP2A --> STEP2B
+   STEP2B --> STEP2C
+   STEP2C --> STEP2D
+   STEP2D --> MENU
+
+   MENU -- Press '3' --> STEP3A[fa:fa-circle-xmark Quit]
+```
+
+```mermaid
+flowchart TD
+    B:::userClass@{ shape: processes, label: "fa:fa-user Manager" }
+    U["fa:fa-user Employee"]:::userClass
+    AR["fa:fa-robot Root Agent"]:::agentClass
+    AS:::agentClass@{ shape: processes, label: "fa:fa-robot Solution Architecture Agent" }
+    AC:::agentClass@{ shape: processes, label: "fa:fa-robot C4 Agent" }
+    DM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file 1 x Solution Architecture\nDocument" }
+    DD:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file 1 x C4 Context Diagram \n 2 x C4 Container Diagrams" }
+    TL:::toolClass@{ shape: processes, label: "fa:fa-hammer Local Tool" }
+    TM("fa:fa-hammer Mermaid MCP Tool"):::toolClass
+
+    U--impresses-->B
+    B--gives job back-->U
+    U e0@--interacts-->AR
+    AR e1@--> AS
+    AR e2@--> AC
+    AS e3@--writes--> DM
+    AS --uses--> TL
+    AC --uses--> TL
+    AC --uses--> TM
+    AC e4@--writes--> DD
+
+    e0@{ animate: true }
+    e1@{ animate: true }
+    e2@{ animate: true }
+    e3@{ animate: true }
+    e4@{ animate: true }
+
+    classDef userClass fill:#FFFFFF,stroke:#666666,color:#666666
+    classDef toolClass fill:lightblue,stroke:blue,color:#666666
+    classDef agentClass fill:lightgreen,stroke:green,color:#666666
+    classDef artifactClass fill:#CCCCCC,stroke:#666666,color:#666666
 ```
 
 ## Prerequisites
@@ -63,6 +113,7 @@ flowchart TD
 ## Installation
 
 1. Install dependencies using `uv`:
+
    ```bash
    uv sync
    ```
@@ -75,18 +126,21 @@ flowchart TD
 ## Usage
 
 ### Run via Command Line
+
 ```bash
 uv run you-talk-too-much
 ```
 
 ### Run via AppleScript App
+
 Under the [applescript/](applescript) folder, you can use the bundled `.app` file to launch the application in a dedicated iTerm window.
 
 ### Menu Options
+
 1. **Start new capture**: Begins recording audio and processing it in real-time batches.
 2. **Stop existing capture**: Finalizes the current session, generates the summary, and uploads it to OneNote.
 3. **Quit program**: Exits the application.
 
-
 ## License
+
 MIT
