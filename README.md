@@ -25,39 +25,51 @@ This app records, transcribes, and summarizes your conversations using state-of-
 
 ```mermaid
 flowchart TD
-   A[fa:fa-user User]
-   APP[fa:fa-gem App]
-   MENU[fa:fa-rectangle-list CLI Menu]
+   A[User]:::defClass
+   APP[App]:::appClass
+   MENU[CLI Menu]:::appClass
 
-   STEP1A[Start Audio Capture]
-   STEP1B[VAD-based Batching]
-   STEP1C[fa:fa-robot MLX-Whisper Transcription]
-   STEP1D[fa:fa-robot Pyannote Diarization]
-   STEP1E[Log Conversation]
+   STEP1A[Start Audio Capture]:::toolClass
+   STEP1B[VAD-based Batching]:::toolClass
+   STEP1C[MLX-Whisper Transcription]:::toolClass
+   STEP1D[Pyannote Diarization]:::toolClass
+   STEP1E[Log Conversation]:::toolClass
 
-   STEP2A[Stop Audio Capture]
-   STEP2B[Export Final Transcript]
-   STEP2C[fa:fa-robot Vertex AI Summarization]
-   STEP2D[fa:fa-microsoft Upload to OneNote]
+   STEP2A[Stop Audio Capture]:::toolClass
+   STEP2B[Export Final Transcript]:::toolClass
+   STEP2C[Vertex AI Summarization]:::toolClass
+   STEP2D[Upload to OneNote]:::toolClass
+
+   FILESYSTEM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file Raw Conversation" }
+   ONENOTE:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file MS OneNote" }
 
    A -- runs --> APP
    APP -- displays --> MENU
 
-   MENU -- Press '1' --> DEC1{Recording?}
+   MENU -- Press '1' --> DEC1{Recording?}:::defClass
    DEC1 -- N --> STEP1A
    STEP1A --> STEP1B
    STEP1B --> STEP1C
    STEP1C --> STEP1D
    STEP1D --> STEP1E
+   STEP1E --> FILESYSTEM
 
-   MENU -- Press '2' --> DEC2{Recording?}
+   MENU -- Press '2' --> DEC2{Recording?}:::defClass
    DEC2 -- Y --> STEP2A
    STEP2A --> STEP2B
    STEP2B --> STEP2C
    STEP2C --> STEP2D
+   STEP2D --> ONENOTE
    STEP2D --> MENU
 
-   MENU -- Press '3' --> STEP3A[fa:fa-circle-xmark Quit]
+   MENU -- Press '3' --> STEP3A[Quit]:::toolClass
+
+   line@{ animate: true }
+
+   classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
+   classDef appClass fill:lightgreen,stroke:green,color:#666666
+   classDef toolClass fill:lightblue,stroke:blue,color:#666666
+   classDef artifactClass fill:#CCCCCC,stroke:#666666,color:#666666
 ```
 
 ```mermaid
