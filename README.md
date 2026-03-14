@@ -64,8 +64,6 @@ flowchart TD
 
    MENU -- Press '3' --> STEP3A[Quit]:::toolClass
 
-   line@{ animate: true }
-
    classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
    classDef appClass fill:lightgreen,stroke:green,color:#666666
    classDef toolClass fill:lightblue,stroke:blue,color:#666666
