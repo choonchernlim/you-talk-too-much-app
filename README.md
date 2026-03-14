@@ -1,6 +1,8 @@
 # You Talk Too Much App 🎙️
 
-Feeling like you can't keep up with all the meeting discussions lately? This app records, transcribes, and summarizes your conversations using state-of-the-art ML models, then automatically syncs the summary to your Microsoft OneNote.
+Feeling like you can't keep up with all the meeting discussions lately?
+
+This app records, transcribes, and summarizes your conversations using state-of-the-art ML models, then automatically syncs the summary to your Microsoft OneNote.
 
 ## Features
 
@@ -45,15 +47,18 @@ flowchart TD
 
 ## Prerequisites
 
-1. **Hardware**: Apple Silicon Mac (M1/M2/M3) is highly recommended for `mlx` performance.
+1. **Hardware**: Apple Silicon Mac (M3, etc) is highly recommended for `mlx` performance.
 2. **System Libraries**: Install `portaudio` via Homebrew:
    ```bash
    brew install portaudio
    ```
 3. **API Access**:
-   - **Hugging Face**: A token with access to `pyannote/speaker-diarization-community-1`.
+   - **Hugging Face**: A token with read access. You **must** visit the following model pages and "Accept and Approve" their terms while logged in:
+     - [mlx-community/whisper-large-v3-mlx](https://huggingface.co/mlx-community/whisper-large-v3-mlx)
+     - [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
+     - [pyannote/embedding](https://huggingface.co/pyannote/embedding)
    - **Google Cloud**: A Vertex AI project and a service account key JSON file.
-   - **Microsoft Azure**: An App Registration for OneNote API access (Notes.ReadWrite.All).
+   - **Microsoft Azure**: An App Registration for OneNote API access (`Notes.ReadWrite.All`).
 
 ## Installation
 
