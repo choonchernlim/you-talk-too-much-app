@@ -70,41 +70,6 @@ flowchart TD
    classDef artifactClass fill:#CCCCCC,stroke:#666666,color:#666666
 ```
 
-```mermaid
-flowchart TD
-    B:::userClass@{ shape: processes, label: "fa:fa-user Manager" }
-    U["fa:fa-user Employee"]:::userClass
-    AR["fa:fa-robot Root Agent"]:::agentClass
-    AS:::agentClass@{ shape: processes, label: "fa:fa-robot Solution Architecture Agent" }
-    AC:::agentClass@{ shape: processes, label: "fa:fa-robot C4 Agent" }
-    DM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file 1 x Solution Architecture\nDocument" }
-    DD:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file 1 x C4 Context Diagram \n 2 x C4 Container Diagrams" }
-    TL:::toolClass@{ shape: processes, label: "fa:fa-hammer Local Tool" }
-    TM("fa:fa-hammer Mermaid MCP Tool"):::toolClass
-
-    U--impresses-->B
-    B--gives job back-->U
-    U e0@--interacts-->AR
-    AR e1@--> AS
-    AR e2@--> AC
-    AS e3@--writes--> DM
-    AS --uses--> TL
-    AC --uses--> TL
-    AC --uses--> TM
-    AC e4@--writes--> DD
-
-    e0@{ animate: true }
-    e1@{ animate: true }
-    e2@{ animate: true }
-    e3@{ animate: true }
-    e4@{ animate: true }
-
-    classDef userClass fill:#FFFFFF,stroke:#666666,color:#666666
-    classDef toolClass fill:lightblue,stroke:blue,color:#666666
-    classDef agentClass fill:lightgreen,stroke:green,color:#666666
-    classDef artifactClass fill:#CCCCCC,stroke:#666666,color:#666666
-```
-
 ## Prerequisites
 
 1. **Hardware**: Apple Silicon Mac (M3, etc) is highly recommended for `mlx` performance.
