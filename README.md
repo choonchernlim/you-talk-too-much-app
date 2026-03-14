@@ -1,4 +1,4 @@
-# You Talk Too Much App 🎙️
+# You Talk Too Much App️
 
 Feeling like you can't keep up with all the meeting discussions lately?
 
