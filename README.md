@@ -29,14 +29,14 @@ flowchart TD
    APP[App]:::appClass
    MENU[CLI Menu]:::appClass
 
-   STEP1A[Start Audio Capture]:::toolClass
+   STEP1A[Start Background Audio Threads]:::toolClass
    STEP1B[VAD-based Batching]:::toolClass
    STEP1C[MLX-Whisper Transcription]:::toolClass
    STEP1D[Pyannote Diarization]:::toolClass
    STEP1E[Log Conversation]:::toolClass
 
    STEP2A[Stop Audio Capture]:::toolClass
-   STEP2B[Export Final Transcript]:::toolClass
+   STEP2B[Read Final Transcript]:::toolClass
    STEP2C[Vertex AI Summarization]:::toolClass
    STEP2D[Upload to OneNote]:::toolClass
 
@@ -47,14 +47,18 @@ flowchart TD
    APP -- displays --> MENU
 
    MENU -- Press '1' --> DEC1{Recording?}:::defClass
+   DEC1 -- Y --> MENU
    DEC1 -- N --> STEP1A
-   STEP1A --> STEP1B
+   STEP1A -- Main Thread --> MENU
+   STEP1A -- Async Loop --> STEP1B
    STEP1B --> STEP1C
    STEP1C --> STEP1D
    STEP1D --> STEP1E
    STEP1E --> FILESYSTEM
+   STEP1E -- Next Batch --> STEP1B
 
    MENU -- Press '2' --> DEC2{Recording?}:::defClass
+   DEC2 -- N --> MENU
    DEC2 -- Y --> STEP2A
    STEP2A --> STEP2B
    STEP2B --> STEP2C
@@ -62,7 +66,10 @@ flowchart TD
    STEP2D --> ONENOTE
    STEP2D --> MENU
 
-   MENU -- Press '3' --> STEP3A[Quit]:::toolClass
+   MENU -- Press '3' --> DEC3{Recording?}:::defClass
+   DEC3 -- Y --> STEP3_STOP[Stop Capture & Summarize]:::toolClass
+   STEP3_STOP --> STEP3A[Quit]:::toolClass
+   DEC3 -- N --> STEP3A
 
    classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
    classDef appClass fill:lightgreen,stroke:green,color:#666666
