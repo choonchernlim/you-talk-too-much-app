@@ -56,11 +56,11 @@ flowchart TD
    A -- runs --> APP
    APP -- displays --> MENU
 
-   MENU -- Press '1' --> OPT1
-   OPT1 --> DEC1{Recording?}:::defClass
-   DEC1 -- Y --> MENU
-   DEC1 -- N --> STEP1A
-   STEP1A -- Main Thread --> MENU
+   MENU OPT1_1@-- Press '1' --> OPT1
+   OPT1 OPT1_2@--> DEC1{Recording?}:::defClass
+   DEC1 OPT1_3@-- Y --> MENU
+   DEC1 OPT1_4@-- N --> STEP1A
+   STEP1A OPT1_5@-- Main Thread --> MENU
    STEP1A -- Async Loop --> STEP1B
    STEP1B --> STEP1C
    STEP1C --> STEP1D
@@ -68,23 +68,31 @@ flowchart TD
    STEP1E --> FILESYSTEM
    STEP1E -- Next Batch --> STEP1B
 
-   MENU -- Press '2' --> OPT2
-   OPT2 --> DEC2{Recording?}:::defClass
-   DEC2 -- N --> MENU
-   DEC2 -- Y --> STEP2A
+   MENU OPT2_1@-- Press '2' --> OPT2
+   OPT2 OPT2_2@--> DEC2{Recording?}:::defClass
+   DEC2 OPT2_3@-- N --> MENU
+   DEC2 OPT2_4@-- Y --> STEP2A
 
    STEP2A --> STEP2B
    STEP2B --> STEP2C
    STEP2C --> STEP2D
    STEP2D --> ONENOTE
 
-   STEP2D -- Menu Loop --> MENU
+   STEP2D OPT2_5@-- Menu Loop --> MENU
 
-   MENU -- Press '3' --> OPT3
-   OPT3 --> DEC3{Recording?}:::defClass
-   DEC3 -- Y --> STEP2A
-   DEC3 -- N --> STEP3A[Quit]:::toolClass
-   STEP2D -- Quit App --> STEP3A
+   MENU OPT3_1@-- Press '3' --> OPT3
+   OPT3 OPT3_2@--> DEC3{Recording?}:::defClass
+   DEC3 OPT3_3@-- Y --> STEP2A
+   DEC3 OPT3_4@-- N --> STEP3A[Quit]:::toolClass
+   STEP2D OPT3_5@-- Quit App --> STEP3A
+
+   class OPT1_1,OPT1_2,OPT1_3,OPT1_4,OPT1_5,OPT1_6 line1Class;
+   class OPT2_1,OPT2_2,OPT2_3,OPT2_4,OPT2_5 line2Class;
+   class OPT3_1,OPT3_2,OPT3_3,OPT3_4,OPT3_5 line3Class;
+
+   classDef line1Class stroke:yellow
+   classDef line2Class stroke:orange
+   classDef line3Class stroke:red
 
    classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
    classDef optClass fill:pink,stroke:#666666,color:#666666
