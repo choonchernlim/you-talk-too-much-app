@@ -22,8 +22,8 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: pytest-meta
-        name: pytest-meta
+      - id: pytest
+        name: pytest
         entry: uv run pytest -s --cov=src --cov-report=term-missing
         language: system
         pass_filenames: false

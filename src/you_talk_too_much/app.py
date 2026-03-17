@@ -80,6 +80,9 @@ class AppSession:
         if self.process_thread:
             self.process_thread.join()
 
+        # Flush any remaining audio in the buffer
+        self.audio_capturer.process_buffer()
+
         # Post-processing (fail-fast)
         conversation_text = self.file_manager.read_conversation()
         if conversation_text.strip():

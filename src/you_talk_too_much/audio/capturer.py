@@ -91,9 +91,6 @@ class AudioCapturer:
 
         logger.info("Stopping batch process buffer...")
 
-        # Process the remaining audio in the buffer
-        self.process_buffer()
-
     def process_buffer(self) -> None:
         """Process the current audio buffer and clear it atomically."""
         if self.buffer:
