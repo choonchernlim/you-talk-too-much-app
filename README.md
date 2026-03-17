@@ -137,10 +137,6 @@ flowchart TD
 uv run you-talk-too-much
 ```
 
-### Run via AppleScript App
-
-Under the [applescript/](applescript) folder, you can use the bundled `.app` file to launch the application in a dedicated iTerm window.
-
 ### Menu Options
 
 1. **Start new capture**: Begins recording audio and processing it in real-time batches.
