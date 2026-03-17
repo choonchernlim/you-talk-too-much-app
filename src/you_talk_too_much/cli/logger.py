@@ -30,8 +30,9 @@ class ColoredFormatter(logging.Formatter):
 
         # Handle multi-line messages by indenting subsequent lines
         if "\n" in message:
-            # prefix length: Time(10) + S(1) + Level(5) + S(1) + Name(20) + S(1) = 38
-            prefix_len = 38
+            # Dynamically calculate the prefix length
+            prefix_len = message.find(record.getMessage())
+            prefix_len = max(prefix_len, 0)
             indent = " " * prefix_len
             message = message.replace("\n", "\n" + indent)
 

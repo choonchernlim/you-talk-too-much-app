@@ -53,6 +53,7 @@ class AppSession:
         """Start the audio capture and processing threads."""
         logger.info("Starting new capture...")
         self.file_manager.create_new_transcript_directory()
+        self.transcriber.reset()
         self.stop_event.clear()
 
         self.capture_thread = Thread(

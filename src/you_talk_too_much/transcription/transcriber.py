@@ -75,6 +75,11 @@ class MLXTranscriber:
 
         self._initialize_models()
 
+    def reset(self) -> None:
+        """Reset the global speaker tracking state."""
+        self.global_speakers.clear()
+        self.speaker_counter = 0
+
     def _initialize_models(self) -> None:
         """Load ML models safely and quietly."""
         logger.info(f"Initializing Transcriber ({self.whisper_model})...")
