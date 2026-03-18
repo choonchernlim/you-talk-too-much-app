@@ -28,14 +28,6 @@ class ColoredFormatter(logging.Formatter):
 
         message = super().format(record)
 
-        # Handle multi-line messages by indenting subsequent lines
-        if "\n" in message:
-            # Dynamically calculate the prefix length
-            prefix_len = message.find(record.getMessage())
-            prefix_len = max(prefix_len, 0)
-            indent = " " * prefix_len
-            message = message.replace("\n", "\n" + indent)
-
         log_color = COLORS.get(record.levelno, RESET)
         record.name = original_name  # Restore original name
         return f"{log_color}{message}{RESET}"
