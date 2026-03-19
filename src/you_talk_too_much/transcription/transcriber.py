@@ -43,6 +43,10 @@ COSINE_SIMILARITY_MATCH_THRESHOLD = 0.55
 COSINE_SIMILARITY_UPDATE_THRESHOLD = 0.25
 SPEAKER_EMBEDDING_UPDATE_WEIGHT = 0.1
 
+# ANSI escape codes for coloring
+ANSI_RED = "\033[0;31m"
+ANSI_RESET = "\033[0m"
+
 
 @contextmanager
 def suppress_output() -> Generator[None, None, None]:
@@ -287,14 +291,18 @@ class MLXTranscriber:
             else:
                 if current_speaker is not None:
                     full_text = " ".join(current_text_buffer)
-                    formatted_lines.append(f"{current_speaker}: {full_text}")
+                    formatted_lines.append(
+                        f"{ANSI_RED}{current_speaker}{ANSI_RESET}: {full_text}"
+                    )
 
                 current_speaker = segment_speaker
                 current_text_buffer = [segment["text"].strip()]
 
         if current_speaker is not None:
             full_text = " ".join(current_text_buffer)
-            formatted_lines.append(f"{current_speaker}: {full_text}")
+            formatted_lines.append(
+                f"{ANSI_RED}{current_speaker}{ANSI_RESET}: {full_text}"
+            )
 
         return "\n".join(formatted_lines) + "\n"
 
