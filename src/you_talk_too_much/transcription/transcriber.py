@@ -39,8 +39,8 @@ COMPRESSION_RATIO_THRESHOLD = 2.4
 # Constants for speaker matching
 MIN_TURN_DURATION = 1.2
 MIN_CLAMPED_DURATION = 0.1
-COSINE_SIMILARITY_MATCH_THRESHOLD = 0.55
-COSINE_SIMILARITY_UPDATE_THRESHOLD = 0.25
+COSINE_SIMILARITY_MATCH_THRESHOLD = 0.72
+COSINE_SIMILARITY_UPDATE_THRESHOLD = 0.50
 SPEAKER_EMBEDDING_UPDATE_WEIGHT = 0.1
 
 # ANSI escape codes for coloring
@@ -123,6 +123,7 @@ class MLXTranscriber:
 
     def transcribe(self, audio_data: np.ndarray) -> dict[str, Any]:
         """Run MLX whisper transcription."""
+        # noinspection PyTypeChecker
         return mlx_whisper.transcribe(
             audio_data, path_or_hf_repo=self.whisper_model, language="en"
         )
@@ -174,6 +175,27 @@ class MLXTranscriber:
                 embeddings.append(emb)
             except Exception as e:
                 logger.debug(f"Embedding error (clamped {turn} to {duration}s): {e}")
+
+        # Fallback for short utterances if no embeddings were extracted
+        if not embeddings:
+            for turn, _, speaker_label in annotation.itertracks(yield_label=True):
+                if speaker_label != local_speaker:
+                    continue
+                try:
+                    clamped_turn = turn
+                    if turn.end > duration:
+                        clamped_turn = Segment(turn.start, min(turn.end, duration))
+
+                    if clamped_turn.end - clamped_turn.start < MIN_CLAMPED_DURATION:
+                        continue
+
+                    emb = inference.crop(
+                        {"waveform": waveform, "sample_rate": 16000}, clamped_turn
+                    )
+                    embeddings.append(emb)
+                except Exception as e:
+                    logger.debug(f"Fallback embedding error: {e}")
+
         return embeddings
 
     def match_speakers(
