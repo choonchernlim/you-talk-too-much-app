@@ -41,14 +41,19 @@ class AudioCapturer:
                 logger.error(status)
             self.buffer.append(indata.copy())
 
-        with sd.InputStream(
+        stream = sd.InputStream(
             samplerate=self.RATE,
             channels=1,
             callback=_audio_callback,
             dtype="float32",
-        ):
-            while not stop_event.is_set():
-                stop_event.wait(0.1)
+        )
+        stream.start()
+
+        while not stop_event.is_set():
+            stop_event.wait(0.1)
+
+        stream.abort()
+        stream.close()
 
         logger.info("Stopping audio capture...")
 
