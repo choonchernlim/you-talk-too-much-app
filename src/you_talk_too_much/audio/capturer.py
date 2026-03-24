@@ -1,6 +1,5 @@
-import time
+import queue
 from collections.abc import Callable
-from threading import Event
 from typing import Any
 
 import numpy as np
@@ -14,97 +13,119 @@ logger = setup_logger(__name__)
 
 
 class AudioCapturer:
-    """Audio Capturer class using sounddevice."""
+    """Audio Capturer using sounddevice with a single-threaded tick pattern."""
 
     RATE = 16000
+    MIN_SAMPLES = RATE * 5  # 5 seconds minimum before VAD check
+    VAD_TAIL_SAMPLES = 24000  # 1.5 seconds for silence detection
 
     def __init__(self, on_audio_ready: Callable[[np.ndarray], None]) -> None:
         """Initialize the audio capturer."""
         logger.info("Initializing Audio Capturer...")
 
         self.on_audio_ready = on_audio_ready
+        self._chunk_queue: queue.Queue[np.ndarray] = queue.Queue()
+        self._buffer: list[np.ndarray] = []
+        self._stream: sd.InputStream | None = None
+        self._vad_model = load_silero_vad()
 
-        # Buffer to store batched audio data as list of numpy arrays
-        self.buffer: list[np.ndarray] = []
-
-    def capture_audio(self, stop_event: Event) -> None:
-        """Start capturing audio in a loop until stop_event is set."""
+    def start(self) -> None:
+        """Start capturing audio by opening the sounddevice stream."""
         logger.info("Starting audio capture...")
 
-        self.buffer.clear()
+        self._buffer.clear()
+        _drain_all(self._chunk_queue)
 
-        def _audio_callback(
-            indata: np.ndarray, _frames: int, _time: Any, status: sd.CallbackFlags
-        ) -> None:
-            """This is called for each audio block by sounddevice."""
-            if status:
-                logger.error(status)
-            self.buffer.append(indata.copy())
-
-        stream = sd.InputStream(
+        self._stream = sd.InputStream(
             samplerate=self.RATE,
             channels=1,
-            callback=_audio_callback,
+            callback=self._audio_callback,
             dtype="float32",
         )
-        stream.start()
+        self._stream.start()
 
-        while not stop_event.is_set():
-            stop_event.wait(0.1)
-
-        stream.abort()
-        stream.close()
-
+    def stop(self) -> None:
+        """Stop capturing and process any remaining audio."""
         logger.info("Stopping audio capture...")
 
-    def batch_process_buffer(
-        self, stop_event: Event, check_interval: float = 2.0
+        if self._stream:
+            self._stream.abort()
+            self._stream.close()
+            self._stream = None
+
+        self._drain_queue()
+        self._process_and_clear()
+
+        logger.info("Audio capture stopped.")
+
+    def tick(self) -> None:
+        """Drain queue, check VAD on tail, process buffer if silence detected."""
+        self._drain_queue()
+
+        total_samples = sum(len(chunk) for chunk in self._buffer)
+        if total_samples < self.MIN_SAMPLES:
+            return
+
+        tail_audio = _extract_tail(self._buffer, self.VAD_TAIL_SAMPLES)
+        audio_tensor = torch.from_numpy(tail_audio).float()
+
+        timestamps = get_speech_timestamps(
+            audio_tensor, self._vad_model, sampling_rate=self.RATE
+        )
+
+        if not timestamps:
+            self._process_and_clear()
+
+    def _audio_callback(
+        self, indata: np.ndarray, _frames: int, _time: Any, status: sd.CallbackFlags
     ) -> None:
-        """Process the audio buffer dynamically based on VAD."""
-        logger.info("Starting VAD-based batch process buffer...")
+        """Called by sounddevice for each audio block (runs in PortAudio C thread)."""
+        if status:
+            logger.error(status)
+        self._chunk_queue.put_nowait(indata.copy())
 
-        model = load_silero_vad()
+    def _drain_queue(self) -> None:
+        """Move all pending chunks from the queue into the local buffer."""
+        while True:
+            try:
+                self._buffer.append(self._chunk_queue.get_nowait())
+            except queue.Empty:
+                break
 
-        while not stop_event.is_set():
-            time.sleep(check_interval)
+    def _process_and_clear(self) -> None:
+        """Concatenate buffer, clear it, and pass audio to the callback."""
+        if not self._buffer:
+            return
 
-            if not self.buffer:
-                continue
+        audio_data = np.concatenate(self._buffer, axis=0).flatten()
+        self._buffer.clear()
+        self.on_audio_ready(audio_data)
 
-            # Check total accumulated audio
-            total_samples = sum(len(chunk) for chunk in self.buffer)
-            # Require at least 5 seconds of audio
-            if total_samples < self.RATE * 5:
-                continue
 
-            # Concatenate safely for VAD check
-            current_audio = np.concatenate(self.buffer, axis=0).flatten()
-            audio_tensor = torch.from_numpy(current_audio).float()
+def _extract_tail(buffer: list[np.ndarray], num_samples: int) -> np.ndarray:
+    """Extract the last `num_samples` from buffer chunks without full concat."""
+    tail_chunks: list[np.ndarray] = []
+    remaining = num_samples
 
-            # Check if last 1.5 seconds is silence
-            # 1.5 seconds * 16000 = 24000 samples
-            last_samples = audio_tensor[-24000:]
+    for chunk in reversed(buffer):
+        if remaining <= 0:
+            break
+        flat = chunk.flatten()
+        if len(flat) >= remaining:
+            tail_chunks.append(flat[-remaining:])
+            remaining = 0
+        else:
+            tail_chunks.append(flat)
+            remaining -= len(flat)
 
-            # silero-vad expects 1D float32 tensor
-            timestamps = get_speech_timestamps(
-                last_samples, model, sampling_rate=self.RATE
-            )
+    tail_chunks.reverse()
+    return np.concatenate(tail_chunks, axis=0)
 
-            if not timestamps:
-                # No speech in the last 1.5 seconds, we have a pause!
-                self.process_buffer()
 
-        logger.info("Stopping batch process buffer...")
-
-    def process_buffer(self) -> None:
-        """Process the current audio buffer and clear it atomically."""
-        if self.buffer:
-            # Copy references and clear atomically to prevent losing new incoming chunks
-            current_chunks = self.buffer[:]
-            self.buffer.clear()
-
-            # Concatenate all recorded chunks
-            audio_data = np.concatenate(current_chunks, axis=0).flatten()
-
-            # Pass the audio data via the callback
-            self.on_audio_ready(audio_data)
+def _drain_all(q: queue.Queue[Any]) -> None:
+    """Discard all items from a queue."""
+    while not q.empty():
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break

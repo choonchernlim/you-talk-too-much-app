@@ -1,5 +1,3 @@
-from threading import Event, Thread
-
 import numpy as np
 
 from you_talk_too_much.audio.capturer import AudioCapturer
@@ -34,10 +32,6 @@ class AppSession:
             settings.azure_tenant_id,
         )
 
-        self.stop_event = Event()
-        self.capture_thread: Thread | None = None
-        self.process_thread: Thread | None = None
-
     def _on_audio_ready(self, audio_data: np.ndarray) -> None:
         """Callback invoked when audio chunk is ready for transcription."""
         raw_json_str, formatted_text = self.transcriber.process(audio_data)
@@ -50,39 +44,21 @@ class AppSession:
             self.file_manager.append_conversation(formatted_text)
 
     def start(self) -> None:
-        """Start the audio capture and processing threads."""
+        """Start a new capture session."""
         logger.info("Starting new capture...")
         self.file_manager.create_new_transcript_directory()
         self.transcriber.reset()
-        self.stop_event.clear()
-
-        self.capture_thread = Thread(
-            target=self.audio_capturer.capture_audio,
-            args=(self.stop_event,),
-            daemon=True,
-        )
-        self.process_thread = Thread(
-            target=self.audio_capturer.batch_process_buffer,
-            args=(self.stop_event,),
-            daemon=True,
-        )
-
-        self.capture_thread.start()
-        self.process_thread.start()
+        self.audio_capturer.start()
         logger.info("Listening...")
+
+    def tick(self) -> None:
+        """Process accumulated audio if silence detected."""
+        self.audio_capturer.tick()
 
     def stop(self) -> None:
         """Stop the current capture session and process the summary."""
         logger.info("Stopping existing capture...")
-        self.stop_event.set()
-
-        if self.capture_thread:
-            self.capture_thread.join()
-        if self.process_thread:
-            self.process_thread.join()
-
-        # Flush any remaining audio in the buffer
-        self.audio_capturer.process_buffer()
+        self.audio_capturer.stop()
 
         # Post-processing (fail-fast)
         conversation_text = self.file_manager.read_conversation()

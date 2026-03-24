@@ -1,8 +1,12 @@
+import time
+
 from you_talk_too_much.app import AppSession
 from you_talk_too_much.cli.logger import setup_logger
-from you_talk_too_much.utils import get_key
+from you_talk_too_much.utils import poll_key
 
 logger = setup_logger(__name__)
+
+TICK_INTERVAL = 2.0
 
 
 def display_menu() -> None:
@@ -17,14 +21,17 @@ def run() -> None:
     """Main application loop."""
     session = AppSession()
     is_capture_started = False
+    last_tick = 0.0
 
     display_menu()
 
     while True:
-        key = get_key()
+        key = poll_key(timeout=0.1)
+
         if key == "1" and not is_capture_started:
             session.start()
             is_capture_started = True
+            last_tick = time.monotonic()
         elif key == "2" and is_capture_started:
             session.stop()
             display_menu()
@@ -34,6 +41,12 @@ def run() -> None:
                 session.stop()
             logger.info("Quitting the program...")
             break
+
+        if is_capture_started:
+            now = time.monotonic()
+            if now - last_tick >= TICK_INTERVAL:
+                session.tick()
+                last_tick = now
 
     logger.info("Done!")
 
