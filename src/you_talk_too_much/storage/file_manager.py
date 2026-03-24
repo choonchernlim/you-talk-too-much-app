@@ -56,5 +56,8 @@ class FileManager:
         write_file(f"{base_path}.html", html_content)
 
     def read_conversation(self) -> str:
-        """Read the conversation text file."""
-        return read_file(self.get_conversation_file_path())
+        """Read the conversation text file, returning empty string if not found."""
+        path = self.get_conversation_file_path()
+        if not os.path.exists(path):
+            return ""
+        return read_file(path)
