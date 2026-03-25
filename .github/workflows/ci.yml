@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Ruff Check
+        run: uv run ruff check .
+
+      - name: Ruff Format
+        run: uv run ruff format --check .
+
+      - name: Type Check (ty)
+        run: uv run ty check
+
+      - name: Run Tests
+        run: uv run pytest -s --cov=src/poc_backend_python --cov-report=xml --cov-report=term-missing --junitxml=pytest.xml | tee pytest-coverage.txt

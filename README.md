@@ -1,5 +1,9 @@
 # You Talk Too Much App️
 
+[![CI](https://github.com/choonchernlim/you-talk-too-much-app/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/choonchernlim/you-talk-too-much-app/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.12-blue.svg)
+
 Feeling like you can't keep up with all the meeting discussions lately?
 
 This app records, transcribes, and summarizes your conversations using state-of-the-art ML models, then automatically syncs the summary to your Microsoft OneNote.

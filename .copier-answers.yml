@@ -1,0 +1,9 @@
+# Changes here will be overwritten by Copier
+_commit: v1.0.0
+_src_path: git@github.com:choonchernlim/copier-python-uv
+author_name: Mike Lim
+github_username: choonchernlim
+package_name: you_talk_too_much
+project_description: Coworkers can't stop talking? There's an app for it.
+project_name: you-talk-too-much-app
+python_version: '3.12'
