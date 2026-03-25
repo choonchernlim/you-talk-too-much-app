@@ -1,7 +1,7 @@
 [project]
 name = "you-talk-too-much-app"
 version = "0.1.0"
-description = "Add your description here"
+description = "Coworkers can't stop talking? There's an app for it."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -45,6 +45,7 @@ packages = ["src/you_talk_too_much"]
 # --- Linting & Formatting (Ruff) ---
 [tool.ruff]
 line-length = 88
+indent-width = 4
 target-version = "py312"
 src = ["src"]
 
@@ -60,6 +61,7 @@ select = [
     "ARG",     # flake8-unused-arguments
     "SIM",     # flake8-simplify
     "RUF",     # Ruff-specific rules
+    "S",       # flake8-bandit (security)
     "N",       # pep8-naming
     "ANN",     # flake8-annotations
     "T20",     # flake8-print
@@ -68,10 +70,15 @@ select = [
     "PL",      # Pylint
     "TID",     # flake8-tidy-imports
     "FA",      # flake8-future-annotations
+    "PT",      # flake8-pytest-style
+    "RET",     # flake8-return
+    "SLF",     # flake8-self
+    "PTH",     # flake8-use-pathlib
 ]
 ignore = [
     "ANN204", # Missing return type for special methods (e.g. __init__)
     "ANN401", # Dynamically typed expressions (Any) are allowed
+    "S101",   # Use of assert is allowed as per project standard
 ]
 
 [tool.ruff.lint.pylint]
@@ -86,6 +93,8 @@ max-returns = 12
     "S101",     # Allow use of assert
     "D103",     # No need for docstrings in every test function
     "PLR2004",  # Allow "magic values" in test comparisons
+    "SLF001",   # Allow accessing private members in tests
+    "PT019",    # Allow mock fixtures as parameters (patch decorator pattern)
 ]
 
 [tool.ruff.lint.isort]
@@ -98,7 +107,7 @@ convention = "google"
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
-line-ending = "auto"
+line-ending = "lf"
 docstring-code-format = true
 
 # --- Type Checking (Ty) ---
@@ -129,6 +138,10 @@ output = ".coverage_reports/coverage.xml"
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
 
 # --- Testing (Pytest) ---
 [tool.pytest.ini_options]

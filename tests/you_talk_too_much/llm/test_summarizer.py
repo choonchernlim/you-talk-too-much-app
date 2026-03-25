@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from you_talk_too_much.config import settings
@@ -26,13 +28,13 @@ def llm_instance():
 def test_llm_summarize_success(llm_instance):
     """Test the summarize method with a real request to Vertex AI."""
     # read this file transcripts/2026-03-23 AM 11:35/conversation.txt
-    with open("transcripts/2026-03-23 AM 11:35/conversation.txt") as f:
+    with Path("transcripts/2026-03-23 AM 11:35/conversation.txt").open() as f:
         sample_text = f.read()
 
     text_content, html_content = llm_instance.summarize(sample_text)
 
     # save html_content into a file "test_output.html" for manual inspection
-    with open("test_output.html", "w") as f:
+    with Path("test_output.html").open("w") as f:
         f.write(html_content)
     #
     # # Since it's real LLM output, we can't assert exact strings,

@@ -3,15 +3,74 @@
 # Reference: https://pre-commit.com
 
 repos:
-  # --- Ruff: Fast Linting, Sorting, and Formatting ---
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.0
+  # --- 1. Security & Safety: Detect Secrets ---
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-format
+      - id: check-secrets-baseline
+        name: check-secrets-baseline
+        entry: >
+          uv run python -c 'import os, sys;
+          msg = "CRITICAL: .secrets.baseline is missing. Generate it with: uvx detect-secrets scan > .secrets.baseline";
+          exists = os.path.exists(".secrets.baseline");
+          print(msg) if not exists else None;
+          sys.exit(1 if not exists else 0)'
+        language: system
+        pass_filenames: false
+        always_run: true
 
-  # --- Local Hooks: Ty & Pytest ---
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package.lock
+
+  # --- 2. Metadata & Consistency: UV Lock Check ---
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: uv-lock-check
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  # --- 3. Static File Integrity & OS Standards ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-case-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+
+  # --- 4. Code Quality: Ruff (Lint & Format) ---
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff-check
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        pass_filenames: false
+        always_run: true
+
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+        pass_filenames: false
+        always_run: true
+
+  # --- 5. Contract & Behavior: Typing & Tests ---
   - repo: local
     hooks:
       - id: ty-check
@@ -24,18 +83,8 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: uv run pytest -s --cov=src --cov-report=term-missing
+        entry: uv run pytest
         language: system
         pass_filenames: false
         always_run: true
-
-  # --- Safety & Standards ---
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: check-yaml
-      - id: check-toml
-      - id: check-added-large-files
-      - id: end-of-file-fixer
-      - id: trailing-whitespace
-      - id: check-merge-conflict
+        stages: [pre-push]

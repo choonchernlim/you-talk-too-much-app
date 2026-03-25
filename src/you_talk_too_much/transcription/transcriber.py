@@ -4,6 +4,7 @@ import os
 import warnings
 from collections.abc import Generator
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from pathlib import Path
 from typing import Any
 
 import mlx_whisper
@@ -52,7 +53,7 @@ ANSI_RESET = "\033[0m"
 def suppress_output() -> Generator[None, None, None]:
     """Context manager to suppress stdout and stderr."""
     with (
-        open(os.devnull, "w") as devnull,
+        Path(os.devnull).open("w") as devnull,
         redirect_stdout(devnull),
         redirect_stderr(devnull),
     ):

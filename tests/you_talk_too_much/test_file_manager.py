@@ -8,7 +8,7 @@ class TestFileManagerReadConversation:
         self, tmp_path: Path
     ) -> None:
         fm = FileManager(base_dir=str(tmp_path))
-        fm.out_dir = str(tmp_path / "nonexistent_session")
+        fm.out_dir = tmp_path / "nonexistent_session"
 
         result = fm.read_conversation()
 
@@ -18,7 +18,7 @@ class TestFileManagerReadConversation:
         fm = FileManager(base_dir=str(tmp_path))
         session_dir = tmp_path / "session"
         session_dir.mkdir()
-        fm.out_dir = str(session_dir)
+        fm.out_dir = session_dir
 
         conv_file = session_dir / "conversation.txt"
         conv_file.write_text("SPEAKER_00: Hello world\n")
