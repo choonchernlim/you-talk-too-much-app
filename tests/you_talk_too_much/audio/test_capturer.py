@@ -120,7 +120,7 @@ class TestAudioCapturerTick:
         callback = MagicMock()
         capturer = AudioCapturer(on_audio_ready=callback)
         # Add > 5 seconds of audio
-        capturer._buffer = [np.ones(AudioCapturer.RATE * 6)]
+        capturer._buffer = [np.ones(AudioCapturer.TARGET_RATE * 6)]
 
         # No speech timestamps = silence
         mock_vad_check.return_value = []
@@ -135,7 +135,7 @@ class TestAudioCapturerTick:
     ) -> None:
         callback = MagicMock()
         capturer = AudioCapturer(on_audio_ready=callback)
-        capturer._buffer = [np.ones(AudioCapturer.RATE * 6)]
+        capturer._buffer = [np.ones(AudioCapturer.TARGET_RATE * 6)]
 
         # Speech detected
         mock_vad_check.return_value = [{"start": 0, "end": 100}]
@@ -152,7 +152,7 @@ class TestAudioCapturerTick:
         mock_vad_check.return_value = [{"start": 0, "end": 100}]
 
         # Put chunks in queue (not in buffer yet)
-        capturer._chunk_queue.put(np.ones(AudioCapturer.RATE * 6))
+        capturer._chunk_queue.put(np.ones(AudioCapturer.TARGET_RATE * 6))
 
         capturer.tick()
 
@@ -164,16 +164,46 @@ class TestAudioCapturerTick:
 @patch("you_talk_too_much.audio.capturer.sd")
 @patch("you_talk_too_much.audio.capturer.load_silero_vad")
 class TestAudioCapturerStartStop:
-    def test_start_opens_stream(self, _mock_vad: MagicMock, mock_sd: MagicMock) -> None:
+    def test_start_opens_stream_at_native_rate(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock
+    ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 48000.0}
         capturer = AudioCapturer(on_audio_ready=MagicMock())
         capturer.start()
 
-        mock_sd.InputStream.assert_called_once()
+        mock_sd.InputStream.assert_called_once_with(
+            samplerate=48000,
+            channels=1,
+            callback=capturer._audio_callback,
+            dtype="float32",
+        )
         mock_sd.InputStream.return_value.start.assert_called_once()
+
+    def test_start_computes_resample_ratio(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock
+    ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 48000.0}
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        capturer.start()
+
+        # 48000 -> 16000 = ratio 3:1, so up=1 down=3
+        assert capturer._resample_up == 1
+        assert capturer._resample_down == 3
+
+    def test_start_sets_unity_ratio_when_native_matches_target(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock
+    ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 16000.0}
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        capturer.start()
+
+        assert capturer._resample_up == 1
+        assert capturer._resample_down == 1
 
     def test_stop_closes_stream_and_flushes(
         self, _mock_vad: MagicMock, mock_sd: MagicMock
     ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 16000.0}
         callback = MagicMock()
         capturer = AudioCapturer(on_audio_ready=callback)
         capturer.start()
@@ -188,8 +218,9 @@ class TestAudioCapturerStartStop:
         callback.assert_called_once()
 
     def test_start_clears_previous_state(
-        self, _mock_vad: MagicMock, _mock_sd: MagicMock
+        self, _mock_vad: MagicMock, mock_sd: MagicMock
     ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 48000.0}
         capturer = AudioCapturer(on_audio_ready=MagicMock())
         capturer._buffer = [np.array([1.0])]
         capturer._chunk_queue.put(np.array([2.0]))
@@ -205,3 +236,51 @@ class TestAudioCapturerStartStop:
         capturer = AudioCapturer(on_audio_ready=MagicMock())
         capturer._stream = None
         capturer.stop()  # should not raise
+
+
+@patch("you_talk_too_much.audio.capturer.load_silero_vad")
+class TestAudioCapturerResampling:
+    def test_drain_queue_resamples_when_rates_differ(
+        self, _mock_vad: MagicMock
+    ) -> None:
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        # Simulate 48kHz -> 16kHz (3:1 downsample)
+        capturer._resample_up = 1
+        capturer._resample_down = 3
+
+        # 300 samples at 48kHz should become 100 samples at 16kHz
+        chunk = np.ones(300, dtype=np.float32)
+        capturer._chunk_queue.put(chunk)
+
+        capturer._drain_queue()
+
+        assert len(capturer._buffer) == 1
+        assert capturer._buffer[0].shape[0] == 100
+
+    def test_drain_queue_skips_resample_when_rates_match(
+        self, _mock_vad: MagicMock
+    ) -> None:
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        # Unity ratio — no resampling needed
+        capturer._resample_up = 1
+        capturer._resample_down = 1
+
+        chunk = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+        capturer._chunk_queue.put(chunk)
+
+        capturer._drain_queue()
+
+        assert len(capturer._buffer) == 1
+        np.testing.assert_array_equal(capturer._buffer[0], chunk)
+
+    def test_resampled_chunks_are_float32(self, _mock_vad: MagicMock) -> None:
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        capturer._resample_up = 1
+        capturer._resample_down = 3
+
+        chunk = np.ones(300, dtype=np.float32)
+        capturer._chunk_queue.put(chunk)
+
+        capturer._drain_queue()
+
+        assert capturer._buffer[0].dtype == np.float32

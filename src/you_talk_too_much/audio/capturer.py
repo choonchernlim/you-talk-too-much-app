@@ -1,3 +1,4 @@
+import math
 import queue
 from collections.abc import Callable
 from typing import Any
@@ -5,6 +6,7 @@ from typing import Any
 import numpy as np
 import sounddevice as sd
 import torch
+from scipy.signal import resample_poly
 from silero_vad import get_speech_timestamps, load_silero_vad
 
 from you_talk_too_much.cli.logger import setup_logger
@@ -15,8 +17,8 @@ logger = setup_logger(__name__)
 class AudioCapturer:
     """Audio Capturer using sounddevice with a single-threaded tick pattern."""
 
-    RATE = 16000
-    MIN_SAMPLES = RATE * 5  # 5 seconds minimum before VAD check
+    TARGET_RATE = 16000
+    MIN_SAMPLES = TARGET_RATE * 5  # 5 seconds minimum before VAD check
     VAD_TAIL_SAMPLES = 24000  # 1.5 seconds for silence detection
 
     def __init__(self, on_audio_ready: Callable[[np.ndarray], None]) -> None:
@@ -28,6 +30,8 @@ class AudioCapturer:
         self._buffer: list[np.ndarray] = []
         self._stream: sd.InputStream | None = None
         self._vad_model = load_silero_vad()
+        self._resample_down: int = 1
+        self._resample_up: int = 1
 
     def start(self) -> None:
         """Start capturing audio by opening the sounddevice stream."""
@@ -36,8 +40,21 @@ class AudioCapturer:
         self._buffer.clear()
         _drain_all(self._chunk_queue)
 
+        native_rate = int(sd.query_devices(kind="input")["default_samplerate"])
+        gcd = math.gcd(self.TARGET_RATE, native_rate)
+        self._resample_up = self.TARGET_RATE // gcd
+        self._resample_down = native_rate // gcd
+
+        logger.info(
+            "Device native rate: %d Hz, target rate: %d Hz (ratio %d:%d)",
+            native_rate,
+            self.TARGET_RATE,
+            self._resample_down,
+            self._resample_up,
+        )
+
         self._stream = sd.InputStream(
-            samplerate=self.RATE,
+            samplerate=native_rate,
             channels=1,
             callback=self._audio_callback,
             dtype="float32",
@@ -70,7 +87,7 @@ class AudioCapturer:
         audio_tensor = torch.from_numpy(tail_audio).float()
 
         timestamps = get_speech_timestamps(
-            audio_tensor, self._vad_model, sampling_rate=self.RATE
+            audio_tensor, self._vad_model, sampling_rate=self.TARGET_RATE
         )
 
         if not timestamps:
@@ -85,12 +102,18 @@ class AudioCapturer:
         self._chunk_queue.put_nowait(indata.copy())
 
     def _drain_queue(self) -> None:
-        """Move all pending chunks from the queue into the local buffer."""
+        """Move pending chunks from queue into buffer, resampled to TARGET_RATE."""
+        needs_resample = self._resample_up != self._resample_down
         while True:
             try:
-                self._buffer.append(self._chunk_queue.get_nowait())
+                chunk = self._chunk_queue.get_nowait()
             except queue.Empty:
                 break
+            if needs_resample:
+                chunk = resample_poly(
+                    chunk.flatten(), self._resample_up, self._resample_down
+                ).astype(np.float32)
+            self._buffer.append(chunk)
 
     def _process_and_clear(self) -> None:
         """Concatenate buffer, clear it, and pass audio to the callback."""
