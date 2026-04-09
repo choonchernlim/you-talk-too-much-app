@@ -1,9 +1,16 @@
+import time
+
 import msal
 import requests
 
 from you_talk_too_much.cli.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+_TRANSIENT_ERRORS = (
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.ConnectionError,
+)
 
 
 class OneNoteClient:
@@ -54,7 +61,7 @@ class OneNoteClient:
     def get_pages(self, page_id: str = "") -> dict:
         """Fetch OneNote pages or a specific page."""
         url = f"https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}"
-        response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response = requests.get(url, headers=self.get_headers(), timeout=30)
         response.raise_for_status()
         return response.json()
 
@@ -62,10 +69,15 @@ class OneNoteClient:
         """Create a new page in the specified OneNote section."""
         logger.info(f"Creating OneNote page [Title: {title}] ...")
 
-        section_id = self._get_section_id()
-        url = f"https://graph.microsoft.com/v1.0/me/onenote/sections/{section_id}/pages"
+        max_retries = 3
+        base_delay = 5
 
-        html_content = f"""
+        for attempt in range(max_retries):
+            try:
+                section_id = self._get_section_id()
+                url = f"https://graph.microsoft.com/v1.0/me/onenote/sections/{section_id}/pages"
+
+                html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -77,16 +89,31 @@ class OneNoteClient:
         </html>
         """
 
-        response = requests.post(
-            url, headers=self.get_headers(), data=html_content, timeout=10
-        )
-        response.raise_for_status()
-        logger.info("OneNote page created successfully.")
+                response = requests.post(
+                    url, headers=self.get_headers(), data=html_content, timeout=30
+                )
+                response.raise_for_status()
+                logger.info("OneNote page created successfully.")
+                return
+
+            except _TRANSIENT_ERRORS:
+                if attempt < max_retries - 1:
+                    sleep_time = base_delay * (2**attempt)
+                    logger.warning(
+                        f"OneNote request timed out. Retrying in {sleep_time}s "
+                        f"(Attempt {attempt + 1}/{max_retries - 1})..."
+                    )
+                    time.sleep(sleep_time)
+                else:
+                    logger.error(
+                        "Failed to create OneNote page after multiple retries."
+                    )
+                    raise
 
     def _get_section_id(self) -> str:
         """Find the ID of the section with the specified name."""
         url = "https://graph.microsoft.com/v1.0/me/onenote/sections"
-        response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response = requests.get(url, headers=self.get_headers(), timeout=30)
         response.raise_for_status()
         sections = response.json().get("value", [])
 
