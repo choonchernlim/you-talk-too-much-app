@@ -55,6 +55,30 @@ class AppSession:
         """Process accumulated audio if silence detected."""
         self.audio_capturer.tick()
 
+    def summarize_existing(self, dir_name: str) -> None:
+        """Run summarization and OneNote push for an existing transcript directory."""
+        assert "/" not in dir_name, f"dir_name must not contain '/': {dir_name!r}"
+        assert not dir_name.startswith("."), (
+            f"dir_name must not start with '.': {dir_name!r}"
+        )
+
+        logger.info(f"Summarizing existing transcript: {dir_name}")
+        self.file_manager.load_existing_transcript_directory(dir_name)
+
+        conversation_text = self.file_manager.read_conversation()
+        if not conversation_text.strip():
+            logger.info("No conversation text found. Nothing to summarize.")
+            return
+
+        markdown_summary, html_summary = self.llm.summarize(conversation_text)
+        self.file_manager.write_summary(markdown_summary, html_summary)
+
+        self.onenote_client.create_page(
+            title=self.file_manager.get_formatted_datetime(),
+            html_summary=html_summary,
+        )
+        logger.info("Done.")
+
     def stop(self) -> None:
         """Stop the current capture session and process the summary."""
         logger.info("Stopping existing capture...")

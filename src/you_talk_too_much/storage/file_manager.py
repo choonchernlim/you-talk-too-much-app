@@ -23,6 +23,13 @@ class FileManager:
         self.out_dir = self.base_dir / self.formatted_datetime
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
+    def load_existing_transcript_directory(self, dir_name: str) -> None:
+        """Load an existing transcript directory by name."""
+        self.out_dir = self.base_dir / dir_name
+        if not self.out_dir.exists():
+            raise FileNotFoundError(f"Transcript directory not found: {self.out_dir}")
+        self.formatted_datetime = dir_name
+
     def get_formatted_datetime(self) -> str:
         """Return the formatted datetime of the current session."""
         return self.formatted_datetime

@@ -14,7 +14,8 @@ def display_menu() -> None:
     logger.info("Press the following key:")
     logger.info("1) Start new capture")
     logger.info("2) Stop existing capture")
-    logger.info("3) Quit program")
+    logger.info("3) Summarize conversation")
+    logger.info("4) Quit program")
 
 
 def run() -> None:
@@ -36,7 +37,12 @@ def run() -> None:
             session.stop()
             display_menu()
             is_capture_started = False
-        elif key == "3":
+        elif key == "3" and not is_capture_started:
+            prompt = "Enter transcript directory name (e.g. 2026-04-09 AM 08:08): "
+            dir_name = input(prompt).strip()
+            session.summarize_existing(dir_name)
+            display_menu()
+        elif key == "4":
             if is_capture_started:
                 session.stop()
             logger.info("Quitting the program...")
