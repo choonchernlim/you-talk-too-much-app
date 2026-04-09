@@ -49,21 +49,15 @@ flowchart TD
        STEP1E[Log Conversation]:::toolClass
    end
 
-   subgraph StopProcess[Stop Session & Summarize]
+   STEP2A[Stop Audio Capture]:::toolClass
+   subgraph StopProcess[Summarize Content & Upload]
        direction TB
-       STEP2A[Stop Audio Capture]:::toolClass
-       STEP2B[Read Final Transcript]:::toolClass
+       STEP2B[Read Transcript]:::toolClass
        STEP2C[Vertex AI Summarization]:::toolClass
        STEP2D[Upload to OneNote]:::toolClass
    end
 
-   subgraph SummarizeProcess[Summarize Existing Transcript]
-       direction TB
-       STEP3A[Enter Directory Name]:::toolClass
-       STEP3B[Read Transcript]:::toolClass
-       STEP3C[Vertex AI Summarization]:::toolClass
-       STEP3D[Upload to OneNote]:::toolClass
-   end
+   STEP3A[Enter Directory Name]:::toolClass
 
    A -- runs --> APP
    APP -- displays --> MENU
@@ -97,12 +91,8 @@ flowchart TD
    DEC3 OPT3_3@-- Y --> MENU
    DEC3 OPT3_4@-- N --> STEP3A
 
-   STEP3A --> STEP3B
-   STEP3B --> STEP3C
-   STEP3C --> STEP3D
-   STEP3D --> ONENOTE
-
-   STEP3D OPT3_5@-- Menu Loop --> MENU
+   STEP3A --> STEP2B
+   STEP2D OPT3_5@-- Menu Loop --> MENU
 
    MENU OPT4_1@-- Press '4' --> OPT4
    OPT4 OPT4_2@--> DEC4{Recording?}:::defClass
@@ -115,7 +105,7 @@ flowchart TD
    class OPT3_1,OPT3_2,OPT3_3,OPT3_4,OPT3_5 line3Class;
    class OPT4_1,OPT4_2,OPT4_3,OPT4_4,OPT4_5 line4Class;
 
-   classDef line1Class stroke:yellow
+   classDef line1Class stroke:blue
    classDef line2Class stroke:orange
    classDef line3Class stroke:red
    classDef line4Class stroke:purple
