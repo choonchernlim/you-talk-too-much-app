@@ -70,11 +70,11 @@ class AppSession:
             logger.info("No conversation text found. Nothing to summarize.")
             return
 
-        markdown_summary, html_summary = self.llm.summarize(conversation_text)
+        markdown_summary, html_summary, topic = self.llm.summarize(conversation_text)
         self.file_manager.write_summary(markdown_summary, html_summary)
 
         self.onenote_client.create_page(
-            title=self.file_manager.get_formatted_datetime(),
+            title=f"{self.file_manager.get_formatted_datetime()} - WHO - {topic}",
             html_summary=html_summary,
         )
         logger.info("Done.")
@@ -87,11 +87,13 @@ class AppSession:
         # Post-processing (fail-fast)
         conversation_text = self.file_manager.read_conversation()
         if conversation_text.strip():
-            markdown_summary, html_summary = self.llm.summarize(conversation_text)
+            markdown_summary, html_summary, topic = self.llm.summarize(
+                conversation_text
+            )
             self.file_manager.write_summary(markdown_summary, html_summary)
 
             self.onenote_client.create_page(
-                title=self.file_manager.get_formatted_datetime(),
+                title=f"{self.file_manager.get_formatted_datetime()} {topic}",
                 html_summary=html_summary,
             )
 

@@ -6,96 +6,15 @@ from google.oauth2 import service_account
 from markdown import markdown
 
 from you_talk_too_much.cli.logger import setup_logger
+from you_talk_too_much.llm.prompts import EXTRACTION_PROMPT, FORMAT_PROMPT, TOPIC_PROMPT
 
 logger = setup_logger(__name__)
 
 # Constants for HTTP Status Codes
 HTTP_429_TOO_MANY_REQUESTS = 429
 
-MAX_OUTPUT_TOKENS = 32_768
 MAX_RETRIES = 4
 BASE_RETRY_DELAY = 5
-
-_EXTRACTION_PROMPT = """\
-You are a meticulous meeting analyst reviewing a transcript.
-
-Your task is to extract ALL discussion content — every topic discussed, every position
-raised, every concern voiced, every tradeoff weighed, and every decision made (including
-items that were not resolved).
-
-For each topic:
-1. What prompted the discussion (context)
-2. Every significant point raised — include ALL positions, not just the final conclusion
-3. Tradeoffs, concerns, objections, and alternatives considered
-4. The final decision or outcome (or "Not reached" if none)
-5. The explicit reasoning or rationale behind any decision
-
-Critical: Do NOT compress or summarise. If something was discussed at length, capture it
-at length. Organise by topic.
-
-<FORMAT>
-## [TOPIC NAME]
-
-**Context:** [what prompted this topic]
-
-**Discussion:**
-- [each significant point raised]
-
-**Tradeoffs / Concerns:**
-- [each concern, objection, or alternative]
-
-**Decision:** [outcome, or "Not reached"]
-
-**Rationale:** [reasoning behind the decision]
-</FORMAT>
-"""
-
-
-_FORMAT_PROMPT = """\
-You are an expert executive assistant.
-
-Based on the detailed meeting notes provided, produce a structured summary.
-
-<INSTRUCTIONS>
-1. The summary must be strictly grounded in the provided notes.
-2. Use the exact markdown format below.
-3. For Key Decisions & Discussion Points, use concise labels of your own choosing.
-   Each bullet must cover multiple related points in rich text — do not create a
-   separate bullet for each micro-point. Capture context, options evaluated, tradeoffs,
-   decision, and
-   rationale within as few bullets as practical per topic.
-4. Do not compress or omit detail from the notes.
-5. If a section is not applicable, state 'Not discussed'.
-</INSTRUCTIONS>
-
-<MARKDOWN FORMAT>
-# TL;DR
-
-* [TEXT]
-
-# Executive Summary
-
-* [TEXT]
-* [TEXT]
-
-# Key Decisions & Discussion Points
-
-## [TOPIC]
-
-* **[SHORT LABEL]:** [TEXT]
-* **[SHORT LABEL]:** [TEXT]
-
-# Action Items
-
-* [TEXT]
-* [TEXT]
-</MARKDOWN FORMAT>
-
-<MARKDOWN RULES>
-1. [SHORT LABEL] must be in bold.
-2. [TEXT] must NOT be in bold.
-</MARKDOWN RULES>
-"""
 
 
 class LLM:
@@ -115,7 +34,7 @@ class LLM:
         )
         self.model_id = model
 
-    def _generate(self, prompt: str, content: str, max_output_tokens: int) -> str:
+    def _generate(self, prompt: str, content: str) -> str:
         """Call Vertex AI with retry on rate limiting. Returns response text."""
         for attempt in range(MAX_RETRIES):
             try:
@@ -123,7 +42,6 @@ class LLM:
                     model=self.model_id,
                     contents=[prompt, content],
                     config=genai.types.GenerateContentConfig(
-                        max_output_tokens=max_output_tokens,
                         temperature=0.3,
                         top_p=0.95,
                     ),
@@ -147,8 +65,14 @@ class LLM:
     def _format(self, extracted: str) -> tuple[str, str]:
         """Format extracted notes into the final markdown + HTML summary."""
         logger.info("Formatting extracted notes into summary...")
-        md = self._generate(_FORMAT_PROMPT, extracted, MAX_OUTPUT_TOKENS)
+        md = self._generate(FORMAT_PROMPT, extracted)
         return md, markdown(md)
+
+    def _extract_topic(self, summary: str) -> str:
+        """Extract a 2-3 word topic label from the markdown summary."""
+        logger.info("Extracting topic label from summary...")
+        raw = self._generate(TOPIC_PROMPT, summary).strip()
+        return " ".join(raw.split())
 
     def _extract(self, doc_content: str) -> str:
         """Extract all discussion points and decisions from the transcript.
@@ -156,10 +80,15 @@ class LLM:
         Returns raw notes.
         """
         logger.info("Extracting discussion details from transcript...")
-        return self._generate(_EXTRACTION_PROMPT, doc_content, MAX_OUTPUT_TOKENS)
+        return self._generate(EXTRACTION_PROMPT, doc_content)
 
-    def summarize(self, doc_content: str) -> tuple[str, str]:
-        """Summarize the conversation text using Vertex AI. Returns (markdown, html)."""
+    def summarize(self, doc_content: str) -> tuple[str, str, str]:
+        """Summarize the conversation text using Vertex AI.
+
+        Returns (markdown, html, topic) where topic is a 2-3 word label.
+        """
         logger.info("Summarizing conversation text...")
         extracted = self._extract(doc_content)
-        return self._format(extracted)
+        md, html = self._format(extracted)
+        topic = self._extract_topic(md)
+        return md, html, topic

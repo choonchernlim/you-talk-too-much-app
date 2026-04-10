@@ -6,12 +6,8 @@ import pytest
 from google.genai import errors
 
 from you_talk_too_much.config import settings
-from you_talk_too_much.llm.summarizer import (
-    _EXTRACTION_PROMPT,
-    _FORMAT_PROMPT,
-    LLM,
-    MAX_OUTPUT_TOKENS,
-)
+from you_talk_too_much.llm.prompts import EXTRACTION_PROMPT, FORMAT_PROMPT, TOPIC_PROMPT
+from you_talk_too_much.llm.summarizer import LLM
 
 
 @pytest.fixture
@@ -54,7 +50,7 @@ def test_generate_returns_response_text(mock_llm: LLM) -> None:
     mock_client = cast("MagicMock", mock_llm.client)
     mock_client.models.generate_content.return_value = response
 
-    result = mock_llm._generate("prompt", "content", 1024)
+    result = mock_llm._generate("prompt", "content")
 
     assert result == "generated text"
 
@@ -66,7 +62,7 @@ def test_generate_raises_when_response_is_empty(mock_llm: LLM) -> None:
     mock_client.models.generate_content.return_value = response
 
     with pytest.raises(RuntimeError, match="Empty response"):
-        mock_llm._generate("prompt", "content", 1024)
+        mock_llm._generate("prompt", "content")
 
 
 def test_generate_retries_on_429_then_succeeds(mock_llm: LLM) -> None:
@@ -79,7 +75,7 @@ def test_generate_retries_on_429_then_succeeds(mock_llm: LLM) -> None:
     ]
 
     with patch("time.sleep") as mock_sleep:
-        result = mock_llm._generate("prompt", "content", 1024)
+        result = mock_llm._generate("prompt", "content")
 
     assert result == "ok"
     mock_sleep.assert_called_once_with(5)  # BASE_RETRY_DELAY * 2**0
@@ -90,7 +86,7 @@ def test_generate_raises_api_error_after_exhausting_retries(mock_llm: LLM) -> No
     mock_client.models.generate_content.side_effect = _api_error(429)
 
     with patch("time.sleep"), pytest.raises(errors.APIError):
-        mock_llm._generate("prompt", "content", 1024)
+        mock_llm._generate("prompt", "content")
 
     assert mock_client.models.generate_content.call_count == 4  # MAX_RETRIES
 
@@ -100,34 +96,26 @@ def test_generate_raises_immediately_on_non_429_api_error(mock_llm: LLM) -> None
     mock_client.models.generate_content.side_effect = _api_error(500)
 
     with pytest.raises(errors.APIError):
-        mock_llm._generate("prompt", "content", 1024)
+        mock_llm._generate("prompt", "content")
 
     assert mock_client.models.generate_content.call_count == 1
 
 
-def test_extract_calls_generate_with_extraction_prompt_and_token_limit(
-    mock_llm: LLM,
-) -> None:
+def test_extract_calls_generate_with_extraction_prompt(mock_llm: LLM) -> None:
     with patch.object(mock_llm, "_generate", return_value="raw notes") as mock_gen:
         result = mock_llm._extract("transcript text")
 
-    mock_gen.assert_called_once_with(
-        _EXTRACTION_PROMPT, "transcript text", MAX_OUTPUT_TOKENS
-    )
+    mock_gen.assert_called_once_with(EXTRACTION_PROMPT, "transcript text")
     assert result == "raw notes"
 
 
-def test_format_calls_generate_with_format_prompt_and_token_limit(
-    mock_llm: LLM,
-) -> None:
+def test_format_calls_generate_with_format_prompt(mock_llm: LLM) -> None:
     with patch.object(
         mock_llm, "_generate", return_value="# TL;DR\n\n* summary"
     ) as mock_gen:
         md, _html = mock_llm._format("extracted notes")
 
-    mock_gen.assert_called_once_with(
-        _FORMAT_PROMPT, "extracted notes", MAX_OUTPUT_TOKENS
-    )
+    mock_gen.assert_called_once_with(FORMAT_PROMPT, "extracted notes")
     assert md == "# TL;DR\n\n* summary"
 
 
@@ -142,19 +130,41 @@ def test_format_converts_markdown_to_html(mock_llm: LLM) -> None:
     assert "<strong>" in html
 
 
+def test_extract_topic_calls_generate_with_topic_prompt(mock_llm: LLM) -> None:
+    with patch.object(
+        mock_llm, "_generate", return_value="Care Team Navigator"
+    ) as mock_gen:
+        result = mock_llm._extract_topic("# TL;DR\n\n* Care team discussion")
+
+    mock_gen.assert_called_once_with(TOPIC_PROMPT, "# TL;DR\n\n* Care team discussion")
+    assert result == "Care Team Navigator"
+
+
+def test_extract_topic_collapses_whitespace_and_newlines(mock_llm: LLM) -> None:
+    with patch.object(mock_llm, "_generate", return_value="Azoda\nCTN\nFAE\n"):
+        result = mock_llm._extract_topic("summary text")
+
+    assert result == "Azoda CTN FAE"
+
+
 def test_summarize_chains_extract_then_format(mock_llm: LLM) -> None:
     with (
         patch.object(mock_llm, "_extract", return_value="raw") as mock_extract,
         patch.object(
             mock_llm, "_format", return_value=("md", "<p>html</p>")
         ) as mock_format,
+        patch.object(
+            mock_llm, "_extract_topic", return_value="Care Team"
+        ) as mock_topic,
     ):
-        md, html = mock_llm.summarize("transcript")
+        md, html, topic = mock_llm.summarize("transcript")
 
     mock_extract.assert_called_once_with("transcript")
     mock_format.assert_called_once_with("raw")
+    mock_topic.assert_called_once_with("md")
     assert md == "md"
     assert html == "<p>html</p>"
+    assert topic == "Care Team"
 
 
 # @pytest.mark.manual
