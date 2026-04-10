@@ -62,7 +62,7 @@ def test_create_page_succeeds_on_first_attempt(client):
             "you_talk_too_much.integrations.onenote.requests.post",
             return_value=post_resp,
         ),
-        patch("you_talk_too_much.integrations.onenote.time.sleep") as mock_sleep,
+        patch("you_talk_too_much.common.retry.time.sleep") as mock_sleep,
     ):
         client.create_page("Title", "<p>body</p>")
 
@@ -91,7 +91,7 @@ def test_create_page_retries_once_on_read_timeout_then_succeeds(client):
             "you_talk_too_much.integrations.onenote.requests.post",
             side_effect=post_side_effect,
         ),
-        patch("you_talk_too_much.integrations.onenote.time.sleep") as mock_sleep,
+        patch("you_talk_too_much.common.retry.time.sleep") as mock_sleep,
     ):
         client.create_page("Title", "<p>body</p>")
 
@@ -111,7 +111,7 @@ def test_create_page_raises_after_exhausting_all_retries(client):
             "you_talk_too_much.integrations.onenote.requests.post",
             side_effect=requests.exceptions.ReadTimeout,
         ),
-        patch("you_talk_too_much.integrations.onenote.time.sleep"),
+        patch("you_talk_too_much.common.retry.time.sleep"),
         pytest.raises(requests.exceptions.ReadTimeout),
     ):
         client.create_page("Title", "<p>body</p>")
@@ -133,7 +133,7 @@ def test_create_page_does_not_retry_on_http_error(client):
             "you_talk_too_much.integrations.onenote.requests.post",
             return_value=post_resp,
         ),
-        patch("you_talk_too_much.integrations.onenote.time.sleep") as mock_sleep,
+        patch("you_talk_too_much.common.retry.time.sleep") as mock_sleep,
         pytest.raises(requests.exceptions.HTTPError),
     ):
         client.create_page("Title", "<p>body</p>")

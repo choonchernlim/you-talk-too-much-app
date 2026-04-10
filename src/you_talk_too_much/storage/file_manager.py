@@ -2,7 +2,6 @@ from datetime import datetime
 from pathlib import Path
 
 from you_talk_too_much.cli.logger import setup_logger
-from you_talk_too_much.utils import append_file, read_file, write_file
 
 logger = setup_logger(__name__)
 
@@ -48,23 +47,25 @@ class FileManager:
 
     def append_raw_data(self, data: str) -> None:
         """Append data to the raw JSONL file."""
-        append_file(self.get_raw_file_path(), data)
+        with Path(self.get_raw_file_path()).open("a") as f:
+            f.write(data)
 
     def append_conversation(self, data: str) -> None:
         """Append data to the conversation text file."""
-        append_file(self.get_conversation_file_path(), data)
+        with Path(self.get_conversation_file_path()).open("a") as f:
+            f.write(data)
 
     def write_summary(self, markdown_content: str, html_content: str) -> None:
         """Write the summary to markdown and html files."""
         if not self.out_dir:
             raise ValueError("Directory not created yet.")
         base_path = self.out_dir / "conversation"
-        write_file(f"{base_path}.md", markdown_content)
-        write_file(f"{base_path}.html", html_content)
+        Path(f"{base_path}.md").write_text(markdown_content)
+        Path(f"{base_path}.html").write_text(html_content)
 
     def read_conversation(self) -> str:
         """Read the conversation text file, returning empty string if not found."""
         path = Path(self.get_conversation_file_path())
         if not path.exists():
             return ""
-        return read_file(str(path))
+        return path.read_text()

@@ -1,4 +1,5 @@
 import numpy as np
+from markdown import markdown
 
 from you_talk_too_much.audio.capturer import AudioCapturer
 from you_talk_too_much.cli.logger import setup_logger
@@ -62,7 +63,8 @@ class AppSession:
             logger.info("No conversation text found. Nothing to summarize.")
             return
 
-        markdown_summary, html_summary, topic = self.llm.summarize(conversation_text)
+        markdown_summary, topic = self.llm.summarize(conversation_text)
+        html_summary = markdown(markdown_summary)
         self.file_manager.write_summary(markdown_summary, html_summary)
 
         self.onenote_client.create_page(

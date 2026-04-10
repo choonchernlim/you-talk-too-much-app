@@ -74,7 +74,7 @@ def test_generate_retries_on_429_then_succeeds(mock_llm: LLM) -> None:
         success,
     ]
 
-    with patch("time.sleep") as mock_sleep:
+    with patch("you_talk_too_much.common.retry.time.sleep") as mock_sleep:
         result = mock_llm._generate("prompt", "content")
 
     assert result == "ok"
@@ -85,7 +85,10 @@ def test_generate_raises_api_error_after_exhausting_retries(mock_llm: LLM) -> No
     mock_client = cast("MagicMock", mock_llm.client)
     mock_client.models.generate_content.side_effect = _api_error(429)
 
-    with patch("time.sleep"), pytest.raises(errors.APIError):
+    with (
+        patch("you_talk_too_much.common.retry.time.sleep"),
+        pytest.raises(errors.APIError),
+    ):
         mock_llm._generate("prompt", "content")
 
     assert mock_client.models.generate_content.call_count == 4  # MAX_RETRIES
@@ -113,21 +116,10 @@ def test_format_calls_generate_with_format_prompt(mock_llm: LLM) -> None:
     with patch.object(
         mock_llm, "_generate", return_value="# TL;DR\n\n* summary"
     ) as mock_gen:
-        md, _html = mock_llm._format("extracted notes")
+        md = mock_llm._format("extracted notes")
 
     mock_gen.assert_called_once_with(FORMAT_PROMPT, "extracted notes")
     assert md == "# TL;DR\n\n* summary"
-
-
-def test_format_converts_markdown_to_html(mock_llm: LLM) -> None:
-    with patch.object(
-        mock_llm, "_generate", return_value="# TL;DR\n\n* **Label:** detail"
-    ):
-        _, html = mock_llm._format("extracted notes")
-
-    assert "<h1>" in html
-    assert "<li>" in html
-    assert "<strong>" in html
 
 
 def test_extract_topic_calls_generate_with_topic_prompt(mock_llm: LLM) -> None:
@@ -150,20 +142,17 @@ def test_extract_topic_collapses_whitespace_and_newlines(mock_llm: LLM) -> None:
 def test_summarize_chains_extract_then_format(mock_llm: LLM) -> None:
     with (
         patch.object(mock_llm, "_extract", return_value="raw") as mock_extract,
-        patch.object(
-            mock_llm, "_format", return_value=("md", "<p>html</p>")
-        ) as mock_format,
+        patch.object(mock_llm, "_format", return_value="md") as mock_format,
         patch.object(
             mock_llm, "_extract_topic", return_value="Care Team"
         ) as mock_topic,
     ):
-        md, html, topic = mock_llm.summarize("transcript")
+        md, topic = mock_llm.summarize("transcript")
 
     mock_extract.assert_called_once_with("transcript")
     mock_format.assert_called_once_with("raw")
     mock_topic.assert_called_once_with("md")
     assert md == "md"
-    assert html == "<p>html</p>"
     assert topic == "Care Team"
 
 
@@ -181,11 +170,11 @@ def test_llm_summarize_success(llm_instance):
     with Path("transcripts/2026-03-23 AM 11:35/conversation.txt").open() as f:
         sample_text = f.read()
 
-    text_content, html_content = llm_instance.summarize(sample_text)
+    text_content, _topic = llm_instance.summarize(sample_text)
 
-    # save html_content into a file "test_output.html" for manual inspection
-    with Path("test_output.html").open("w") as f:
-        f.write(html_content)
+    # save text content into a file "test_output.md" for manual inspection
+    with Path("test_output.md").open("w") as f:
+        f.write(text_content)
     #
     # # Since it's real LLM output, we can't assert exact strings,
     # # but we can verify formatting.
@@ -196,4 +185,3 @@ def test_llm_summarize_success(llm_instance):
         "Executive Summary" in text_content
         or "Key Decisions & Discussion Points" in text_content
     )
-    # assert "<h1>" in html_content or "<h2>" in html_content
