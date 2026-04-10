@@ -1,4 +1,5 @@
 import numpy as np
+from markdown import markdown
 
 from you_talk_too_much.audio.capturer import AudioCapturer
 from you_talk_too_much.cli.logger import setup_logger
@@ -55,20 +56,37 @@ class AppSession:
         """Process accumulated audio if silence detected."""
         self.audio_capturer.tick()
 
+    def _summarize_and_push(self) -> None:
+        """Summarize the current conversation and push to OneNote."""
+        conversation_text = self.file_manager.read_conversation()
+        if not conversation_text.strip():
+            logger.info("No conversation text found. Nothing to summarize.")
+            return
+
+        markdown_summary, topic = self.llm.summarize(conversation_text)
+        html_summary = markdown(markdown_summary)
+        self.file_manager.write_summary(markdown_summary, html_summary)
+
+        self.onenote_client.create_page(
+            title=f"{self.file_manager.get_formatted_datetime()} - WHO - {topic}",
+            html_summary=html_summary,
+        )
+
+    def summarize_existing(self, dir_name: str) -> None:
+        """Run summarization and OneNote push for an existing transcript directory."""
+        assert "/" not in dir_name, f"dir_name must not contain '/': {dir_name!r}"
+        assert not dir_name.startswith("."), (
+            f"dir_name must not start with '.': {dir_name!r}"
+        )
+
+        logger.info(f"Summarizing existing transcript: {dir_name}")
+        self.file_manager.load_existing_transcript_directory(dir_name)
+        self._summarize_and_push()
+        logger.info("Done.")
+
     def stop(self) -> None:
         """Stop the current capture session and process the summary."""
         logger.info("Stopping existing capture...")
         self.audio_capturer.stop()
-
-        # Post-processing (fail-fast)
-        conversation_text = self.file_manager.read_conversation()
-        if conversation_text.strip():
-            markdown_summary, html_summary = self.llm.summarize(conversation_text)
-            self.file_manager.write_summary(markdown_summary, html_summary)
-
-            self.onenote_client.create_page(
-                title=self.file_manager.get_formatted_datetime(),
-                html_summary=html_summary,
-            )
-
+        self._summarize_and_push()
         logger.info("Stopped.")

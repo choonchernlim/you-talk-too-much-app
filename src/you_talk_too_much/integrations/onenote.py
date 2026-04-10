@@ -1,9 +1,22 @@
+from pathlib import Path
+
 import msal
 import requests
 
 from you_talk_too_much.cli.logger import setup_logger
+from you_talk_too_much.common.retry import retry_with_backoff
 
 logger = setup_logger(__name__)
+
+_CACHE_FILE = Path.home() / ".you-talk-too-much" / "msal_token_cache.bin"
+
+_TRANSIENT_ERRORS = (
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.ConnectionError,
+)
+
+_MAX_RETRIES = 3
+_BASE_DELAY = 5
 
 
 class OneNoteClient:
@@ -22,14 +35,22 @@ class OneNoteClient:
         self.scopes = ["Notes.ReadWrite.All"]
         self.authority = f"https://login.microsoftonline.com/{self.az_tenant_id}"
 
-        # Initialize the MSAL public client
+        self._cache = msal.SerializableTokenCache()
+        if _CACHE_FILE.exists():
+            self._cache.deserialize(_CACHE_FILE.read_text())
+
         self.app = msal.PublicClientApplication(
-            self.az_client_id, authority=self.authority
+            self.az_client_id, authority=self.authority, token_cache=self._cache
         )
+
+    def _save_cache(self) -> None:
+        """Persist the token cache to disk if it has changed."""
+        if self._cache.has_state_changed:
+            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _CACHE_FILE.write_text(self._cache.serialize())
 
     def get_headers(self) -> dict:
         """Get headers with a fresh access token."""
-        # Always get a fresh access token to prevent expiration
         return {
             "Authorization": f"Bearer {self._get_access_token()}",
             "Content-Type": "text/html",
@@ -45,6 +66,7 @@ class OneNoteClient:
 
         if not result:
             result = self.app.acquire_token_interactive(scopes=self.scopes)
+            self._save_cache()
 
         if "access_token" not in result:
             raise Exception(f"Could not acquire access token: {result.get('error')}")
@@ -54,7 +76,7 @@ class OneNoteClient:
     def get_pages(self, page_id: str = "") -> dict:
         """Fetch OneNote pages or a specific page."""
         url = f"https://graph.microsoft.com/v1.0/me/onenote/pages/{page_id}"
-        response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response = requests.get(url, headers=self.get_headers(), timeout=30)
         response.raise_for_status()
         return response.json()
 
@@ -62,31 +84,49 @@ class OneNoteClient:
         """Create a new page in the specified OneNote section."""
         logger.info(f"Creating OneNote page [Title: {title}] ...")
 
-        section_id = self._get_section_id()
-        url = f"https://graph.microsoft.com/v1.0/me/onenote/sections/{section_id}/pages"
+        def _attempt() -> None:
+            section_id = self._get_section_id()
+            url = f"https://graph.microsoft.com/v1.0/me/onenote/sections/{section_id}/pages"
+            html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{title}</title>
+    </head>
+    <body>
+        {html_summary}
+    </body>
+    </html>
+    """
+            response = requests.post(
+                url, headers=self.get_headers(), data=html_content, timeout=30
+            )
+            response.raise_for_status()
 
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>{title}</title>
-        </head>
-        <body>
-            {html_summary}
-        </body>
-        </html>
-        """
+        def _on_retry(_exc: Exception, attempt: int, sleep_time: float) -> None:
+            logger.warning(
+                f"OneNote request timed out. Retrying in {sleep_time}s "
+                f"(Attempt {attempt}/{_MAX_RETRIES - 1})..."
+            )
 
-        response = requests.post(
-            url, headers=self.get_headers(), data=html_content, timeout=10
-        )
-        response.raise_for_status()
+        try:
+            retry_with_backoff(
+                fn=_attempt,
+                retryable_exceptions=_TRANSIENT_ERRORS,
+                max_retries=_MAX_RETRIES,
+                base_delay=_BASE_DELAY,
+                on_retry=_on_retry,
+            )
+        except _TRANSIENT_ERRORS:
+            logger.error("Failed to create OneNote page after multiple retries.")
+            raise
+
         logger.info("OneNote page created successfully.")
 
     def _get_section_id(self) -> str:
         """Find the ID of the section with the specified name."""
         url = "https://graph.microsoft.com/v1.0/me/onenote/sections"
-        response = requests.get(url, headers=self.get_headers(), timeout=10)
+        response = requests.get(url, headers=self.get_headers(), timeout=30)
         response.raise_for_status()
         sections = response.json().get("value", [])
 

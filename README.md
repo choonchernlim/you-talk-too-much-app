@@ -34,7 +34,8 @@ flowchart TD
    MENU[CLI Menu]:::appClass
    OPT1[Start Recording Action]:::optClass
    OPT2[Stop Recording Action]:::optClass
-   OPT3[Quit Action]:::optClass
+   OPT3[Summarize Action]:::optClass
+   OPT4[Quit Action]:::optClass
 
    FILESYSTEM:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file Raw Conversation" }
    ONENOTE:::artifactClass@{ shape: lin-cyl, label: "fa:fa-file MS OneNote" }
@@ -48,14 +49,15 @@ flowchart TD
        STEP1E[Log Conversation]:::toolClass
    end
 
-   subgraph StopProcess[Stop Session & Summarize]
+   STEP2A[Stop Audio Capture]:::toolClass
+   subgraph StopProcess[Summarize Content & Upload]
        direction TB
-       STEP2A[Stop Audio Capture]:::toolClass
-       STEP2B[Read Final Transcript]:::toolClass
+       STEP2B[Read Transcript]:::toolClass
        STEP2C[Vertex AI Summarization]:::toolClass
        STEP2D[Upload to OneNote]:::toolClass
    end
 
+   STEP3A[Enter Directory Name]:::toolClass
 
    A -- runs --> APP
    APP -- displays --> MENU
@@ -86,17 +88,27 @@ flowchart TD
 
    MENU OPT3_1@-- Press '3' --> OPT3
    OPT3 OPT3_2@--> DEC3{Recording?}:::defClass
-   DEC3 OPT3_3@-- Y --> STEP2A
-   DEC3 OPT3_4@-- N --> STEP3A[Quit]:::toolClass
-   STEP2D OPT3_5@-- Quit App --> STEP3A
+   DEC3 OPT3_3@-- Y --> MENU
+   DEC3 OPT3_4@-- N --> STEP3A
+
+   STEP3A --> STEP2B
+   STEP2D OPT3_5@-- Menu Loop --> MENU
+
+   MENU OPT4_1@-- Press '4' --> OPT4
+   OPT4 OPT4_2@--> DEC4{Recording?}:::defClass
+   DEC4 OPT4_3@-- Y --> STEP2A
+   DEC4 OPT4_4@-- N --> STEP4A[Quit]:::toolClass
+   STEP2D OPT4_5@-- Quit App --> STEP4A
 
    class OPT1_1,OPT1_2,OPT1_3,OPT1_4,OPT1_5,OPT1_6 line1Class;
    class OPT2_1,OPT2_2,OPT2_3,OPT2_4,OPT2_5 line2Class;
    class OPT3_1,OPT3_2,OPT3_3,OPT3_4,OPT3_5 line3Class;
+   class OPT4_1,OPT4_2,OPT4_3,OPT4_4,OPT4_5 line4Class;
 
-   classDef line1Class stroke:yellow
+   classDef line1Class stroke:blue
    classDef line2Class stroke:orange
    classDef line3Class stroke:red
+   classDef line4Class stroke:purple
 
    classDef defClass fill:#FFFFFF,stroke:#666666,color:#666666
    classDef optClass fill:pink,stroke:#666666,color:#666666
@@ -145,7 +157,8 @@ uv run you-talk-too-much
 
 1. **Start new capture**: Begins recording audio and processing it in real-time batches.
 2. **Stop existing capture**: Finalizes the current session, generates the summary, and uploads it to OneNote.
-3. **Quit program**: Exits the application.
+3. **Summarize conversation**: Generates a summary for an existing transcript and uploads it to OneNote.
+4. **Quit program**: Exits the application.
 
 ## License
 
