@@ -1,8 +1,11 @@
 import time
+import warnings
 
 from you_talk_too_much.app import AppSession
 from you_talk_too_much.cli.logger import setup_logger
 from you_talk_too_much.utils import poll_key
+
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 
 logger = setup_logger(__name__)
 
