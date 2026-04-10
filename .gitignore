@@ -166,3 +166,4 @@ cython_debug/
 .msal_token_cache.json
 transcripts/
 .DS_Store
+docs/superpowers/
