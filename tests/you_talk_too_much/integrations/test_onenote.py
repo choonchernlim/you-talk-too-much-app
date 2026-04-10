@@ -3,13 +3,31 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from you_talk_too_much.integrations.onenote import OneNoteClient
+from you_talk_too_much.integrations.onenote import _CACHE_FILE, OneNoteClient
+
+
+def _make_client(tmp_path=None):
+    """Create a OneNoteClient with all MSAL and cache I/O mocked out."""
+    cache_patch = patch(
+        "you_talk_too_much.integrations.onenote.msal.SerializableTokenCache"
+    )
+    app_patch = patch(
+        "you_talk_too_much.integrations.onenote.msal.PublicClientApplication"
+    )
+    cache_file_patch = patch(
+        "you_talk_too_much.integrations.onenote._CACHE_FILE",
+        tmp_path / "msal_token_cache.bin" if tmp_path else _CACHE_FILE,
+    )
+    return cache_patch, app_patch, cache_file_patch
 
 
 @pytest.fixture
 def client():
+    cache_patch, app_patch, cache_file_patch = _make_client()
     with (
-        patch("you_talk_too_much.integrations.onenote.msal.PublicClientApplication"),
+        cache_patch,
+        app_patch,
+        cache_file_patch,
         patch.object(
             OneNoteClient,
             "get_headers",
@@ -121,3 +139,87 @@ def test_create_page_does_not_retry_on_http_error(client):
         client.create_page("Title", "<p>body</p>")
 
     mock_sleep.assert_not_called()
+
+
+# --- Token cache tests ---
+
+
+def _make_auth_client(tmp_path, *, silent_result, interactive_result=None):
+    """Build a OneNoteClient with a tmp cache file but mocked MSAL app."""
+    mock_app = MagicMock()
+    mock_app.get_accounts.return_value = (
+        [MagicMock()] if silent_result is not None else []
+    )
+    mock_app.acquire_token_silent.return_value = silent_result
+    if interactive_result is not None:
+        mock_app.acquire_token_interactive.return_value = interactive_result
+
+    cache_file = tmp_path / "msal_token_cache.bin"
+
+    with (
+        patch("you_talk_too_much.integrations.onenote.msal.SerializableTokenCache"),
+        patch(
+            "you_talk_too_much.integrations.onenote.msal.PublicClientApplication",
+            return_value=mock_app,
+        ),
+        patch(
+            "you_talk_too_much.integrations.onenote._CACHE_FILE",
+            cache_file,
+        ),
+    ):
+        c = OneNoteClient("S", "cid", "tid")
+
+    c.app = mock_app
+    return c, cache_file
+
+
+def test_get_access_token_uses_silent_when_accounts_cached(tmp_path):
+    silent_result = {"access_token": "tok-silent"}
+    client, _ = _make_auth_client(tmp_path, silent_result=silent_result)
+
+    acquired = client._get_access_token()
+
+    client.app.acquire_token_silent.assert_called_once()
+    client.app.acquire_token_interactive.assert_not_called()
+    assert acquired == "tok-silent"
+
+
+def test_get_access_token_falls_back_to_interactive_when_silent_fails(tmp_path):
+    interactive_result = {"access_token": "tok-interactive"}
+    client, _ = _make_auth_client(
+        tmp_path, silent_result=None, interactive_result=interactive_result
+    )
+    client._cache = MagicMock()
+    client._cache.has_state_changed = True
+    client._cache.serialize.return_value = "{}"
+
+    acquired = client._get_access_token()
+
+    client.app.acquire_token_interactive.assert_called_once()
+    assert acquired == "tok-interactive"
+
+
+def test_save_cache_writes_file_when_state_changed(tmp_path):
+    cache_file = tmp_path / "msal_token_cache.bin"
+    client, _ = _make_auth_client(tmp_path, silent_result=None)
+    client._cache = MagicMock()
+    client._cache.has_state_changed = True
+    client._cache.serialize.return_value = '{"tokens": "data"}'
+
+    with patch("you_talk_too_much.integrations.onenote._CACHE_FILE", cache_file):
+        client._save_cache()
+
+    assert cache_file.exists()
+    assert cache_file.read_text() == '{"tokens": "data"}'
+
+
+def test_save_cache_skips_write_when_state_unchanged(tmp_path):
+    cache_file = tmp_path / "msal_token_cache.bin"
+    client, _ = _make_auth_client(tmp_path, silent_result=None)
+    client._cache = MagicMock()
+    client._cache.has_state_changed = False
+
+    with patch("you_talk_too_much.integrations.onenote._CACHE_FILE", cache_file):
+        client._save_cache()
+
+    assert not cache_file.exists()

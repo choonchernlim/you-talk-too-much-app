@@ -1,4 +1,5 @@
 import time
+from pathlib import Path
 
 import msal
 import requests
@@ -6,6 +7,8 @@ import requests
 from you_talk_too_much.cli.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+_CACHE_FILE = Path.home() / ".you-talk-too-much" / "msal_token_cache.bin"
 
 _TRANSIENT_ERRORS = (
     requests.exceptions.ReadTimeout,
@@ -29,10 +32,20 @@ class OneNoteClient:
         self.scopes = ["Notes.ReadWrite.All"]
         self.authority = f"https://login.microsoftonline.com/{self.az_tenant_id}"
 
+        self._cache = msal.SerializableTokenCache()
+        if _CACHE_FILE.exists():
+            self._cache.deserialize(_CACHE_FILE.read_text())
+
         # Initialize the MSAL public client
         self.app = msal.PublicClientApplication(
-            self.az_client_id, authority=self.authority
+            self.az_client_id, authority=self.authority, token_cache=self._cache
         )
+
+    def _save_cache(self) -> None:
+        """Persist the token cache to disk if it has changed."""
+        if self._cache.has_state_changed:
+            _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _CACHE_FILE.write_text(self._cache.serialize())
 
     def get_headers(self) -> dict:
         """Get headers with a fresh access token."""
@@ -52,6 +65,7 @@ class OneNoteClient:
 
         if not result:
             result = self.app.acquire_token_interactive(scopes=self.scopes)
+            self._save_cache()
 
         if "access_token" not in result:
             raise Exception(f"Could not acquire access token: {result.get('error')}")

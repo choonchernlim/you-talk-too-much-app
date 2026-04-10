@@ -93,7 +93,7 @@ class AppSession:
             self.file_manager.write_summary(markdown_summary, html_summary)
 
             self.onenote_client.create_page(
-                title=f"{self.file_manager.get_formatted_datetime()} {topic}",
+                title=f"{self.file_manager.get_formatted_datetime()} - WHO - {topic}",
                 html_summary=html_summary,
             )
 
