@@ -6,8 +6,8 @@ import pytest
 from google.genai import errors
 
 from you_talk_too_much.config import get_settings
-from you_talk_too_much.llm.prompts import EXTRACTION_PROMPT, FORMAT_PROMPT
-from you_talk_too_much.llm.summarizer import LLM, SummaryOutput
+from you_talk_too_much.llm.prompts import EXTRACTION_PROMPT, FORMAT_PROMPT, TOPIC_PROMPT
+from you_talk_too_much.llm.summarizer import LLM
 
 
 @pytest.fixture
@@ -45,42 +45,19 @@ def _api_error(code: int) -> errors.APIError:
     return err
 
 
-def _response(text: str | None = "generated text", parsed: object = None) -> Mock:
+def _response(text: str | None = "generated text") -> Mock:
     response = Mock()
     response.text = text
-    response.parsed = parsed
     return response
 
 
-def test_generate_returns_response(mock_llm: LLM) -> None:
+def test_generate_returns_response_text(mock_llm: LLM) -> None:
     mock_client = cast("MagicMock", mock_llm.client)
     mock_client.models.generate_content.return_value = _response("generated text")
 
     result = mock_llm._generate("prompt", "content")
 
-    assert result.text == "generated text"
-
-
-def test_generate_passes_response_schema_for_structured_output(mock_llm: LLM) -> None:
-    mock_client = cast("MagicMock", mock_llm.client)
-    mock_client.models.generate_content.return_value = _response("{}")
-
-    mock_llm._generate("prompt", "content", response_schema=SummaryOutput)
-
-    config = mock_client.models.generate_content.call_args.kwargs["config"]
-    assert config.response_schema is SummaryOutput
-    assert config.response_mime_type == "application/json"
-
-
-def test_generate_omits_schema_for_plain_text(mock_llm: LLM) -> None:
-    mock_client = cast("MagicMock", mock_llm.client)
-    mock_client.models.generate_content.return_value = _response("ok")
-
-    mock_llm._generate("prompt", "content")
-
-    config = mock_client.models.generate_content.call_args.kwargs["config"]
-    assert config.response_schema is None
-    assert config.response_mime_type is None
+    assert result == "generated text"
 
 
 def test_generate_raises_when_response_is_empty(mock_llm: LLM) -> None:
@@ -101,7 +78,7 @@ def test_generate_retries_on_429_then_succeeds(mock_llm: LLM) -> None:
     with patch("you_talk_too_much.common.retry.time.sleep") as mock_sleep:
         result = mock_llm._generate("prompt", "content")
 
-    assert result.text == "ok"
+    assert result == "ok"
     mock_sleep.assert_called_once_with(5)  # BASE_RETRY_DELAY * 2**0
 
 
@@ -129,56 +106,53 @@ def test_generate_raises_immediately_on_non_429_api_error(mock_llm: LLM) -> None
 
 
 def test_extract_calls_generate_with_extraction_prompt(mock_llm: LLM) -> None:
-    with patch.object(
-        mock_llm, "_generate", return_value=_response("raw notes")
-    ) as mock_gen:
+    with patch.object(mock_llm, "_generate", return_value="raw notes") as mock_gen:
         result = mock_llm._extract("transcript text")
 
     mock_gen.assert_called_once_with(EXTRACTION_PROMPT, "transcript text")
     assert result == "raw notes"
 
 
-def test_format_with_topic_returns_parsed_fields(mock_llm: LLM) -> None:
-    parsed = SummaryOutput(summary_markdown="# TL;DR\n\n* summary", topic="Care; CTN")
+def test_format_calls_generate_with_format_prompt(mock_llm: LLM) -> None:
     with patch.object(
-        mock_llm, "_generate", return_value=_response("{}", parsed=parsed)
+        mock_llm, "_generate", return_value="# TL;DR\n\n* summary"
     ) as mock_gen:
-        md, topic = mock_llm._format_with_topic("extracted notes")
+        result = mock_llm._format("extracted notes")
 
-    mock_gen.assert_called_once_with(
-        FORMAT_PROMPT, "extracted notes", response_schema=SummaryOutput
-    )
-    assert md == "# TL;DR\n\n* summary"
-    assert topic == "Care; CTN"
+    mock_gen.assert_called_once_with(FORMAT_PROMPT, "extracted notes")
+    assert result == "# TL;DR\n\n* summary"
 
 
-def test_format_with_topic_collapses_topic_whitespace(mock_llm: LLM) -> None:
-    parsed = SummaryOutput(summary_markdown="md", topic="Azoda\nCTN\nFAE\n")
-    with patch.object(mock_llm, "_generate", return_value=_response("{}", parsed)):
-        _md, topic = mock_llm._format_with_topic("notes")
+def test_extract_topic_calls_generate_with_topic_prompt(mock_llm: LLM) -> None:
+    with patch.object(
+        mock_llm, "_generate", return_value="Care Team Navigator"
+    ) as mock_gen:
+        result = mock_llm._extract_topic("# TL;DR\n\n* Care team discussion")
 
-    assert topic == "Azoda CTN FAE"
-
-
-def test_format_with_topic_raises_on_unparsed_response(mock_llm: LLM) -> None:
-    with (
-        patch.object(mock_llm, "_generate", return_value=_response("{}", parsed=None)),
-        pytest.raises(RuntimeError, match="Unexpected structured response"),
-    ):
-        mock_llm._format_with_topic("notes")
+    mock_gen.assert_called_once_with(TOPIC_PROMPT, "# TL;DR\n\n* Care team discussion")
+    assert result == "Care Team Navigator"
 
 
-def test_summarize_chains_extract_then_format_with_topic(mock_llm: LLM) -> None:
+def test_extract_topic_collapses_whitespace_and_newlines(mock_llm: LLM) -> None:
+    with patch.object(mock_llm, "_generate", return_value="Azoda\nCTN\nFAE\n"):
+        result = mock_llm._extract_topic("summary text")
+
+    assert result == "Azoda CTN FAE"
+
+
+def test_summarize_chains_extract_format_then_topic(mock_llm: LLM) -> None:
     with (
         patch.object(mock_llm, "_extract", return_value="raw") as mock_extract,
+        patch.object(mock_llm, "_format", return_value="md") as mock_format,
         patch.object(
-            mock_llm, "_format_with_topic", return_value=("md", "Care Team")
-        ) as mock_format,
+            mock_llm, "_extract_topic", return_value="Care Team"
+        ) as mock_topic,
     ):
         md, topic = mock_llm.summarize("transcript")
 
     mock_extract.assert_called_once_with("transcript")
     mock_format.assert_called_once_with("raw")
+    mock_topic.assert_called_once_with("md")
     assert md == "md"
     assert topic == "Care Team"
 
@@ -186,8 +160,7 @@ def test_summarize_chains_extract_then_format_with_topic(mock_llm: LLM) -> None:
 @pytest.mark.manual
 def test_llm_summarize_success(llm_instance):
     """Test the summarize method with a real request to Vertex AI."""
-    # read this file transcripts/2026-03-23 AM 11:35/conversation.txt
-    with Path("transcripts/2026-03-23 AM 11:35/conversation.txt").open() as f:
+    with Path("transcripts/2026-07-08 PM 12:32/conversation.txt").open() as f:
         sample_text = f.read()
 
     text_content, _topic = llm_instance.summarize(sample_text)
@@ -196,7 +169,7 @@ def test_llm_summarize_success(llm_instance):
     with Path("test_output.md").open("w") as f:
         f.write(text_content)
 
-    assert (
-        "Executive Summary" in text_content
-        or "Key Decisions & Discussion Points" in text_content
-    )
+    assert "# TL;DR" in text_content
+    assert "# Executive Summary" in text_content
+    assert "# Key Decisions & Discussion Points" in text_content
+    assert "# Action Items" in text_content
