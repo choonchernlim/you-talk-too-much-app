@@ -88,5 +88,12 @@ class AppSession:
         """Stop the current capture session and process the summary."""
         logger.info("Stopping existing capture...")
         self.audio_capturer.stop()
-        self._summarize_and_push()
+        try:
+            self._summarize_and_push()
+        except Exception:
+            logger.exception(
+                "Summarization/OneNote push failed. The transcript is saved; "
+                "use menu option 3 with directory name "
+                f"'{self.file_manager.get_formatted_datetime()}' to retry."
+            )
         logger.info("Stopped.")

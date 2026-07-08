@@ -1,5 +1,6 @@
 import math
 import queue
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -53,25 +54,49 @@ class AudioCapturer:
             self._resample_up,
         )
 
-        self._stream = sd.InputStream(
+        try:
+            self._stream = self._open_stream(native_rate)
+        except sd.PortAudioError:
+            # PortAudio's host state can be left corrupted by a previous
+            # teardown on macOS/CoreAudio; reinitialize and retry once.
+            logger.exception("Failed to open audio stream. Reinitializing PortAudio...")
+            sd._terminate()  # noqa: SLF001
+            time.sleep(0.5)
+            sd._initialize()  # noqa: SLF001
+            self._stream = self._open_stream(native_rate)
+
+    def _open_stream(self, native_rate: int) -> sd.InputStream:
+        """Open and start an input stream, cleaning up if start fails."""
+        stream = sd.InputStream(
             samplerate=native_rate,
             channels=1,
             callback=self._audio_callback,
             dtype="float32",
         )
-        self._stream.start()
+        try:
+            stream.start()
+        except sd.PortAudioError:
+            stream.close(ignore_errors=True)
+            raise
+        return stream
 
     def stop(self) -> None:
         """Stop capturing and process any remaining audio."""
         logger.info("Stopping audio capture...")
 
-        if self._stream:
-            self._stream.abort()
-            self._stream.close()
+        # Graceful stop() rather than abort(): on macOS/CoreAudio, aborting
+        # the stream can corrupt PortAudio's internal thread state and make
+        # the next stream open fail intermittently.
+        try:
+            if self._stream:
+                try:
+                    self._stream.stop()
+                finally:
+                    self._stream.close(ignore_errors=True)
+        finally:
             self._stream = None
-
-        self._drain_queue()
-        self._process_and_clear()
+            self._drain_queue()
+            self._process_and_clear()
 
         logger.info("Audio capture stopped.")
 

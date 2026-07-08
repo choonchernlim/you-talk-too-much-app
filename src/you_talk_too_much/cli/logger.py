@@ -1,5 +1,11 @@
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+_LOG_FILE = Path.home() / ".you-talk-too-much" / "logs" / "app.log"
+_MAX_LOG_BYTES = 5 * 1024 * 1024
+_LOG_BACKUP_COUNT = 5
 
 # Mapping log levels to colors
 COLORS: dict[int, str] = {
@@ -33,8 +39,29 @@ class ColoredFormatter(logging.Formatter):
         return f"{log_color}{message}{RESET}"
 
 
+_file_handler: RotatingFileHandler | None = None
+
+
+def _get_file_handler() -> RotatingFileHandler:
+    """Return the shared file handler, creating it on first use."""
+    global _file_handler  # noqa: PLW0603
+    if _file_handler is None:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _file_handler = RotatingFileHandler(
+            _LOG_FILE, maxBytes=_MAX_LOG_BYTES, backupCount=_LOG_BACKUP_COUNT
+        )
+        _file_handler.setLevel(logging.INFO)
+        _file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)-5s [%(threadName)s] %(name)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+    return _file_handler
+
+
 def setup_logger(name: str) -> logging.Logger:
-    """Setup logging with colored output."""
+    """Setup logging with colored console output and a persistent log file."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
 
@@ -52,5 +79,6 @@ def setup_logger(name: str) -> logging.Logger:
 
         # Add the handler to the logger
         logger.addHandler(console_handler)
+        logger.addHandler(_get_file_handler())
 
     return logger

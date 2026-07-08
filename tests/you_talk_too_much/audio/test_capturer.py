@@ -2,6 +2,7 @@ import queue
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from you_talk_too_much.audio.capturer import (
     AudioCapturer,
@@ -213,8 +214,28 @@ class TestAudioCapturerStartStop:
 
         capturer.stop()
 
-        mock_sd.InputStream.return_value.abort.assert_called_once()
+        # Graceful stop() (not abort()) to keep PortAudio state healthy
+        mock_sd.InputStream.return_value.stop.assert_called_once()
+        mock_sd.InputStream.return_value.abort.assert_not_called()
         mock_sd.InputStream.return_value.close.assert_called_once()
+        callback.assert_called_once()
+
+    def test_stop_flushes_and_clears_stream_even_when_stream_stop_raises(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock
+    ) -> None:
+        mock_sd.query_devices.return_value = {"default_samplerate": 16000.0}
+        callback = MagicMock()
+        capturer = AudioCapturer(on_audio_ready=callback)
+        capturer.start()
+
+        capturer._chunk_queue.put(np.array([1.0, 2.0, 3.0]))
+        mock_sd.InputStream.return_value.stop.side_effect = RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            capturer.stop()
+
+        mock_sd.InputStream.return_value.close.assert_called_once()
+        assert capturer._stream is None
         callback.assert_called_once()
 
     def test_start_clears_previous_state(
@@ -236,6 +257,67 @@ class TestAudioCapturerStartStop:
         capturer = AudioCapturer(on_audio_ready=MagicMock())
         capturer._stream = None
         capturer.stop()  # should not raise
+
+
+class FakePortAudioError(Exception):
+    pass
+
+
+@patch("you_talk_too_much.audio.capturer.time.sleep")
+@patch("you_talk_too_much.audio.capturer.sd")
+@patch("you_talk_too_much.audio.capturer.load_silero_vad")
+class TestAudioCapturerStartRetry:
+    def _configure_sd(self, mock_sd: MagicMock) -> None:
+        mock_sd.PortAudioError = FakePortAudioError
+        mock_sd.query_devices.return_value = {"default_samplerate": 16000.0}
+
+    def test_start_reinitializes_portaudio_and_retries_on_open_failure(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        self._configure_sd(mock_sd)
+        good_stream = MagicMock()
+        mock_sd.InputStream.side_effect = [
+            FakePortAudioError("open failed"),
+            good_stream,
+        ]
+
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        capturer.start()
+
+        mock_sd._terminate.assert_called_once()
+        mock_sd._initialize.assert_called_once()
+        assert capturer._stream is good_stream
+        good_stream.start.assert_called_once()
+
+    def test_start_closes_stream_and_retries_when_stream_start_fails(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        self._configure_sd(mock_sd)
+        bad_stream = MagicMock()
+        bad_stream.start.side_effect = FakePortAudioError("start failed")
+        good_stream = MagicMock()
+        mock_sd.InputStream.side_effect = [bad_stream, good_stream]
+
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+        capturer.start()
+
+        bad_stream.close.assert_called_once_with(ignore_errors=True)
+        mock_sd._terminate.assert_called_once()
+        mock_sd._initialize.assert_called_once()
+        assert capturer._stream is good_stream
+
+    def test_start_raises_when_retry_also_fails(
+        self, _mock_vad: MagicMock, mock_sd: MagicMock, _mock_sleep: MagicMock
+    ) -> None:
+        self._configure_sd(mock_sd)
+        mock_sd.InputStream.side_effect = FakePortAudioError("open failed")
+
+        capturer = AudioCapturer(on_audio_ready=MagicMock())
+
+        with pytest.raises(FakePortAudioError):
+            capturer.start()
+
+        assert capturer._stream is None
 
 
 @patch("you_talk_too_much.audio.capturer.load_silero_vad")
