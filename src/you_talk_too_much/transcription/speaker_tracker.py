@@ -1,7 +1,3 @@
-import os
-from collections.abc import Generator
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -11,6 +7,7 @@ from pyannote.core import Segment
 from scipy.spatial.distance import cdist
 
 from you_talk_too_much.cli.logger import setup_logger
+from you_talk_too_much.common.output import suppress_output
 
 logger = setup_logger(__name__)
 
@@ -22,17 +19,6 @@ COSINE_SIMILARITY_UPDATE_THRESHOLD = 0.50
 SPEAKER_EMBEDDING_UPDATE_WEIGHT = 0.1
 
 
-@contextmanager
-def _suppress_output() -> Generator[None, None, None]:
-    """Suppress stdout and stderr during noisy model loading."""
-    with (
-        Path(os.devnull).open("w") as devnull,
-        redirect_stdout(devnull),
-        redirect_stderr(devnull),
-    ):
-        yield
-
-
 class SpeakerTracker:
     """Tracks global speaker identities across audio chunks using embeddings."""
 
@@ -42,7 +28,7 @@ class SpeakerTracker:
             "mps" if torch.backends.mps.is_available() else "cpu"
         )
 
-        with _suppress_output():
+        with suppress_output():
             self.embedding_model: Model | None = Model.from_pretrained(
                 embedding_model_name, token=hf_token
             )

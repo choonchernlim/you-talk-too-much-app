@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,5 +29,11 @@ class Settings(BaseSettings):
     )
 
 
-# Global settings instance
-settings = Settings()  # type: ignore
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return the application settings, loaded on first use.
+
+    Lazy so that importing app modules never fails on missing settings;
+    validation happens when the settings are first needed.
+    """
+    return Settings()  # type: ignore[call-arg]

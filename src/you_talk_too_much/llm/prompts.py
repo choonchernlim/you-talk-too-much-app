@@ -1,18 +1,3 @@
-TOPIC_PROMPT = """\
-You are a concise labeller. Given a meeting summary, reply with exactly 3 to 5 keywords
-that capture the main topic.
-
-Rules:
-- Prefer proper nouns, product names, acronyms, and codenames mentioned in the summary
-  (e.g. "Care Triage", "Azhoda", "Stripe", "iOS").
-- Never use generic words like "App", "Development", "Meeting", "Discussion", "Update",
-  "Review", "Planning", or "Project".
-- If the summary mentions a specific system, feature, or team name, use it.
-
-Output ONLY those words on a single line separated by semicolons — no punctuation, no
-newlines, no explanation.\
-"""
-
 EXTRACTION_PROMPT = """\
 You are a meticulous meeting analyst reviewing a transcript.
 
@@ -51,9 +36,11 @@ at length. Organise by topic.
 FORMAT_PROMPT = """\
 You are an expert executive assistant.
 
-Based on the detailed meeting notes provided, produce a structured summary.
+Based on the detailed meeting notes provided, produce a JSON object with two fields:
+- "summary_markdown": a structured markdown summary of the notes
+- "topic": a topic label of 3 to 5 keywords
 
-<INSTRUCTIONS>
+<SUMMARY INSTRUCTIONS>
 1. The summary must be strictly grounded in the provided notes.
 2. Use the exact markdown format below.
 3. For Key Decisions & Discussion Points, use concise labels of your own choosing.
@@ -63,7 +50,7 @@ Based on the detailed meeting notes provided, produce a structured summary.
    rationale within as few bullets as practical per topic.
 4. Do not compress or omit detail from the notes.
 5. If a section is not applicable, state 'Not discussed'.
-</INSTRUCTIONS>
+</SUMMARY INSTRUCTIONS>
 
 <MARKDOWN FORMAT>
 # TL;DR
@@ -92,4 +79,14 @@ Based on the detailed meeting notes provided, produce a structured summary.
 1. [SHORT LABEL] must be in bold.
 2. [TEXT] must NOT be in bold.
 </MARKDOWN RULES>
+
+<TOPIC RULES>
+1. Exactly 3 to 5 keywords on a single line, separated by semicolons; no other
+   punctuation, no newlines, no explanation.
+2. Prefer proper nouns, product names, acronyms, and codenames mentioned in the notes
+   (e.g. "Care Triage", "Azhoda", "Stripe", "iOS").
+3. Never use generic words like "App", "Development", "Meeting", "Discussion", "Update",
+   "Review", "Planning", or "Project".
+4. If the notes mention a specific system, feature, or team name, use it.
+</TOPIC RULES>
 """

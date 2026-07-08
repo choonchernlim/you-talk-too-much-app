@@ -1,10 +1,6 @@
 import json
 import logging
-import os
 import warnings
-from collections.abc import Generator
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from pathlib import Path
 from typing import Any
 
 import mlx_whisper
@@ -13,7 +9,8 @@ import torch
 from pyannote.audio import Pipeline
 
 from you_talk_too_much.cli.logger import setup_logger
-from you_talk_too_much.config import settings
+from you_talk_too_much.common.output import suppress_output
+from you_talk_too_much.config import get_settings
 from you_talk_too_much.transcription.formatter import format_conversation
 from you_talk_too_much.transcription.speaker_tracker import SpeakerTracker
 
@@ -38,22 +35,12 @@ NO_SPEECH_PROB_THRESHOLD = 0.7
 COMPRESSION_RATIO_THRESHOLD = 2.4
 
 
-@contextmanager
-def suppress_output() -> Generator[None, None, None]:
-    """Context manager to suppress stdout and stderr."""
-    with (
-        Path(os.devnull).open("w") as devnull,
-        redirect_stdout(devnull),
-        redirect_stderr(devnull),
-    ):
-        yield
-
-
 class MLXTranscriber:
     """Transcriber using MLX-Whisper and Pyannote for diarization."""
 
     def __init__(self) -> None:
         """Initialize the MLX Transcriber with whisper and diarization models."""
+        settings = get_settings()
         self.whisper_model = settings.hf_whisper_model
         self.diarization_model = settings.hf_diarization_model
         self.hf_token = settings.hf_token

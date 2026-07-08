@@ -40,16 +40,24 @@ pre-commit run --all-files
 
 **Data flow:**
 
-1. `main.py` — CLI menu loop; user presses keys to start/stop recording
-2. `app.py` (`AppSession`) — orchestrates the session lifecycle
+1. `main.py` — CLI menu loop; user presses keys to start/stop recording. The main thread only polls keys and runs the cheap VAD tick; all heavy work is offloaded.
+2. `app.py` (`AppSession`) — orchestrates session lifecycles across two serial background lanes (see thread model below)
 3. `audio/capturer.py` (`AudioCapturer`) — captures audio at the device's native rate, resamples to 16 kHz, buffers in a queue, and emits chunks when VAD detects silence
 4. `transcription/transcriber.py` (`MLXTranscriber`) — transcribes chunks with MLX-Whisper (Apple Silicon), runs Pyannote diarization, and tracks speakers across segments using cosine similarity on embeddings (threshold 0.72)
-5. On stop: `llm/summarizer.py` (`LLM`) reads the full conversation from disk and calls Vertex AI Gemini to produce a markdown + HTML summary
+5. On stop: `llm/summarizer.py` (`LLM`) reads the full conversation from disk and calls Vertex AI Gemini (extraction call, then a structured-output call returning markdown + topic) to produce the summary
 6. `integrations/onenote.py` (`OneNoteClient`) authenticates via MSAL and POSTs the HTML to Microsoft Graph API
 
-**Transcript persistence:** `storage/file_manager.py` (`FileManager`) writes each transcribed segment to `conversation.txt` and raw diarization output to `raw.jsonl` under a timestamped directory.
+**Thread model:** exactly three threads, coordinated only by job ordering (no locks):
 
-**Configuration:** `config.py` uses Pydantic Settings; all credentials (GCP, Azure, HuggingFace) are loaded from `.env` at startup. The app fails fast if any required key is missing. See `.env.sample` for required keys.
+- The **PortAudio callback thread** writes raw audio into `AudioCapturer._chunk_queue`.
+- The **transcription runner** (`common/task_runner.py`, `TaskRunner`) serially runs chunk transcription jobs and transcript file writes; it owns `MLXTranscriber`/`SpeakerTracker` (even `reset` is submitted as a job).
+- The **summarize runner** serially runs LLM + OneNote jobs; it is handed an immutable `TranscriptSession` snapshot per finished recording, so a new recording can start while the previous summary uploads. `stop()` returns immediately; `AppSession.shutdown()` (called from `main.run()`'s `finally`) waits for all pending work.
+
+**Transcript persistence:** `storage/file_manager.py` — `FileManager` creates/loads timestamped directories and returns frozen `TranscriptSession` handles that write `conversation.txt`, `raw.jsonl`, and the summary files. Background jobs must only touch files through their own `TranscriptSession`.
+
+**Configuration:** `config.py` uses Pydantic Settings via lazy `get_settings()` (cached); all credentials (GCP, Azure, HuggingFace) load from `.env` on first use and fail fast if any required key is missing. See `.env.sample` for required keys. Tests get dummy env values from `tests/conftest.py`.
+
+**Diagnostics:** all log output (with thread names and full tracebacks) also goes to a rotating file at `~/.you-talk-too-much/logs/app.log`; check it first when debugging intermittent/threading issues.
 
 ## Key constraints
 
